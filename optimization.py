@@ -46,6 +46,12 @@ def expected_improvement(X, X_sample, gpr, xi=0.01):
 
     return ei    
 
+def mean(X,gpr):
+    ''' 
+    returns mean of gpr prediction
+    '''
+    return gpr.predict(X)
+
 def upper_confidence_bound(X, X_sample, gpr, kappa = 0.1):
     '''
     Upper confidence bound acquisition function
