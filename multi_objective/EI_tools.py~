@@ -1,0 +1,21 @@
+import numpy as np
+from scipy.stats import norm
+
+def PSI(a,b,mu,sigma):
+    try:
+        s = (b - mu) / sigma
+        return sigma * norm.pdf(s) + (a - mu)*CDF(b,mu,sigma)
+    except ZeroDivisionError:
+        return (a - mu)*CDF(b,mu,sigma)
+        
+def CDF(x,mu,sigma):
+    try:
+        s = (x - mu) / sigma
+        return norm.cdf(s)
+    
+    except ZeroDivisionError:
+        if x > mu:
+            return 1.0
+        else:
+            return 0.0
+        
