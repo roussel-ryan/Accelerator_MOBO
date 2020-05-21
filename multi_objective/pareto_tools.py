@@ -1,6 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
+from pymoo.configuration import Configuration
+Configuration.show_compile_hint = False
+
+from pymoo.factory import get_performance_indicator
+
 logging.basicConfig(level=logging.INFO)
 
 def dominates(a,b,strict = False):
@@ -75,6 +80,12 @@ def get_non_dominated_set(s):
 def sort_along_first_axis(s):
     ind = np.argsort(s.T[0])
     return s[ind]
+
+def get_hypervolume(F,r):
+    '''use brute force method O(n^(m+1)) to calculate the hypervolume'''
+    S = get_non_dominated_set(F)
+    hv = get_performance_indicator('hv',ref_point = r)
+    return hv.calc(F)
 
 def main():
     n = 50

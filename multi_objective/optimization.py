@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 from scipy.optimize import minimize
 
@@ -20,15 +21,13 @@ def get_next_point(F,GPRs,bounds,r):
     -----------------------------------------------------------
     output: point in input parameter space that maximizes EHVI
     '''
-    dim = F.shape()[1]
+    dim = F.shape[1]
 
     assert dim == len(GPRs),'# of gaussian processes != objective space!'
     
     if dim == 2:
-        S = PT.get_non_dominated_set(F)
-        S = PT.sort_along_first_axis(S)[::-1]
-
-        new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,S,r))
+    
+        new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,F,r))
         return new_point
         
     elif dim == 3:
@@ -36,17 +35,21 @@ def get_next_point(F,GPRs,bounds,r):
     else:
         print('can\'t do higher dimentional problems yet!')
 
-def get_EHVI(X,GPRs,S,r):
+def get_EHVI(X,GPRs,F,r):
     '''
     x: point input from optimizer
-    s: non-dominated set of points
+    F: set of observed points
     GPRs: list of GP regressors
     r: reference point
     '''
     #logging.info(f'calling get_EHVI() with point:{x.reshape(-1,2)}')
-    f = np.array([ele.predict(X.reshape(-1,2),return_std=True) for ele in GPRs]).T[0]
+    S = PT.get_non_dominated_set(F)
+    S = PT.sort_along_first_axis(S)[::-1]
+
+    dim = len(X)
+    f = np.array([ele.predict(X.reshape(-1,dim),return_std=True) for ele in GPRs]).T[0]
     #logging.info(f)
-    return -EHVI(f[0],f[1],s,r)
+    return -EIT.EHVI_2D(f[0],f[1],S,r)
 
         
 def layered_minimization(func,bounds,n_restarts = 10, args=()):
@@ -61,5 +64,5 @@ def layered_minimization(func,bounds,n_restarts = 10, args=()):
         if res.fun < min_val:
             min_val = res.fun
             min_x = res.x
-    logging.info(f'number of function evaluations {nfev}, avg exec time {(time.time() - s)/nfev}')
+    #logging.info(f'number of function evaluations {nfev}, avg exec time {(time.time() - s)/nfev}')
     return min_x

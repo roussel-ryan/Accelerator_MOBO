@@ -19,7 +19,7 @@ def CDF(x,mu,sigma):
         else:
             return 0.0
         
-def 2D_EHVI(mu,sigma,Y,r):
+def EHVI_2D(mu,sigma,Y,r):
     #number of non-dominated points
     n = len(Y)
     
