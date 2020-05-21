@@ -6,6 +6,8 @@ from scipy.optimize import minimize
 from . import EI_tools as EIT
 from . import pareto_tools as PT
 
+import logging
+
 def get_next_point(F,GPRs,bounds,r):
     '''
     get the next evaluation point for X based on expected hypervolume improvement
@@ -49,7 +51,9 @@ def get_EHVI(X,GPRs,F,r):
     dim = len(X)
     f = np.array([ele.predict(X.reshape(-1,dim),return_std=True) for ele in GPRs]).T[0]
     #logging.info(f)
-    return -EIT.EHVI_2D(f[0],f[1],S,r)
+    ehvi = -EIT.EHVI_2D(f[0],f[1],S,r)
+    #logging.info((f[0],f[1],ehvi))
+    return ehvi
 
         
 def layered_minimization(func,bounds,n_restarts = 10, args=()):
@@ -59,7 +63,7 @@ def layered_minimization(func,bounds,n_restarts = 10, args=()):
 
     s = time.time()
     for x0 in np.random.uniform(bounds[:,0],bounds[:,1], size = (n_restarts,dim)):
-        res = minimize(func, x0 = x0, args = args,bounds = bounds, method='L-BFGS-B')
+        res = minimize(func, x0 = x0, args = args,bounds = bounds, method='L-BFGS-B',tol = 0.001)
         nfev = nfev + res.nfev
         if res.fun < min_val:
             min_val = res.fun
