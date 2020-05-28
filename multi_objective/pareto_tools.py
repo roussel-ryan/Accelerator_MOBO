@@ -43,7 +43,9 @@ def in_set(pt,s):
     ''' test if point <pt> is in set <s>'''
     return np.any(np.equal(s,pt).all(1))
 
-    
+def get_PF(s):
+    return get_non_dominated_set(s)
+
 def get_non_dominated_set(s):
     '''implimentation of Kung's Algorithm'''
         
@@ -79,13 +81,19 @@ def get_non_dominated_set(s):
 
 def sort_along_first_axis(s):
     ind = np.argsort(s.T[0])
-    return s[ind]
+    return s[ind][::-1]
 
 def get_hypervolume(F,r):
-    '''use brute force method O(n^(m+1)) to calculate the hypervolume'''
+    ''' use pymoo to calcuate HV'''
     S = get_non_dominated_set(F)
     hv = get_performance_indicator('hv',ref_point = r)
     return hv.calc(F)
+
+def get_HV_over_time(F,r):
+    HV = np.zeros(len(F)-1)
+    for i in range(1,len(F)):
+        HV[i-1] = get_hypervolume(F[:i],r)
+    return HV
 
 def main():
     n = 50

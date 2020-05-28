@@ -8,7 +8,7 @@ from . import pareto_tools as PT
 
 import logging
 
-def get_next_point(F,GPRs,bounds,r):
+def get_next_point(F,GPRs,bounds,r,**kwargs):
     '''
     get the next evaluation point for X based on expected hypervolume improvement
     -----------------------------------------------------------
@@ -26,10 +26,12 @@ def get_next_point(F,GPRs,bounds,r):
     dim = F.shape[1]
 
     assert dim == len(GPRs),'# of gaussian processes != objective space!'
+    A = kwargs.get('A',np.zeros((2)))
+    B = kwargs.get('B',r)
     
     if dim == 2:
     
-        new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,F,r))
+        new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,F,r,A,B))
         return new_point
         
     elif dim == 3:
@@ -37,33 +39,16 @@ def get_next_point(F,GPRs,bounds,r):
     else:
         print('can\'t do higher dimentional problems yet!')
 
-def get_EHVI(X,GPRs,F,r):
-    '''
-    x: point input from optimizer
-    F: set of observed points
-    GPRs: list of GP regressors
-    r: reference point
-    '''
-    #logging.info(f'calling get_EHVI() with point:{x.reshape(-1,2)}')
-    S = PT.get_non_dominated_set(F)
-    S = PT.sort_along_first_axis(S)[::-1]
-
-    dim = len(X)
-    f = np.array([ele.predict(X.reshape(-1,dim),return_std=True) for ele in GPRs]).T[0]
-    #logging.info(f)
-    ehvi = -EIT.EHVI_2D(f[0],f[1],S,r)
-    #logging.info((f[0],f[1],ehvi))
-    return ehvi
 
         
-def layered_minimization(func,bounds,n_restarts = 10, args=()):
-    min_val = 10000000
+def layered_minimization(func,bounds,n_restarts = 25, args=()):
+    min_val = 10**20
     dim = len(bounds)
     nfev = 0
 
     s = time.time()
     for x0 in np.random.uniform(bounds[:,0],bounds[:,1], size = (n_restarts,dim)):
-        res = minimize(func, x0 = x0, args = args,bounds = bounds, method='L-BFGS-B',tol = 0.001)
+        res = minimize(func, x0 = x0, args = args,bounds = bounds, method='L-BFGS-B')#,tol = 0.001)
         nfev = nfev + res.nfev
         if res.fun < min_val:
             min_val = res.fun
