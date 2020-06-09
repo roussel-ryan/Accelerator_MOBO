@@ -1,0 +1,35 @@
+import logging
+import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF,WhiteKernel
+
+from GaussianProcessTools.lineBO import staged_optimizer
+
+def f(x):
+    return np.linalg.norm(x)
+
+def c(x):
+    return x.flatten()[0].reshape(-1,1)
+
+def main():
+    bounds = np.array(((-1,1),(-1,1)))
+    
+    si = {}
+    si['n_grid'] = 100
+
+    kernel = RBF(1.0,'fixed')
+    si['gprf'] = GaussianProcessRegressor(kernel,alpha = 0.01)
+    si['gprc'] = [GaussianProcessRegressor(kernel,alpha = 0.01)]
+    si['ofun'] = f
+    si['cfun'] = [c]
+    si['h'] = np.array([0.0]).reshape(-1,1)
+
+    X0 = np.array((1,1)).reshape(-1,2)
+    SLBO = staged_optimizer.StageLineOpt(bounds,f,si,X0 = X0)
+    SLBO.optimize()
+    
+
+main()
+plt.show()

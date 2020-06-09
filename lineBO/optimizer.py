@@ -3,139 +3,180 @@ import matplotlib.pyplot as plt
 import logging
 
 import scipy.optimize as opt
+from . import oracles
 
 class LineOpt:
-    def __init__(self,bounds,oracle,acq,**kwargs):
-        self.dim = len(bounds)
-        logging.info(self.dim)
-        self.bounds = bounds
-        self.oracle = oracle
-        self.acq = acq
+    def __init__(self,bounds,acq,**kwargs):
+        '''
+        Uses line optimiztion to solve a high dimentional global optimization problem
+        
+        Arguments
+        ---------
+        bounds                np array containing ((x_1_min,x_1_max),(x_2_min,x_2_max),...)
+        acq                   function of the form f(x,*args) that is to be minimized
+        
+        Optional Arguments
+        ------------------
+        args                  arguments for optimization function (default: [])
+        oracle                direction choosing oracle (default: random)
+        X0                    initial point to start optimization (default: np.random.uniform)
+        verbose               display diagnostic plotting
+        T                     step budget (default:10)
+        tol                   convergence tolerance (default: 1e-6)
+
+        '''
+
+
+        self.dim        = len(bounds)
+        self.bounds     = bounds
+        self.acq        = acq
+        
+        #set up oracle and acq_args
+        self.oracle = kwargs.get('oracle',oracles.random)
         self.acq_args = kwargs.get('args',[])
-        self.x0 = kwargs.get('x0',np.zeros(self.dim))
+
+        #initialize storage vectors
+        self.x = kwargs.get('X0',np.random.uniform(bounds[:,0],bounds[:,1]).reshape(-1,self.dim))
+        self.l = np.atleast_2d(self.oracle(self.dim))
+
+        #logging.info((self.x,self.l))
+        
         self.verbose = kwargs.get('verbose',False)
-        
-        self.n_calls = 0
+        self.T = kwargs.get('T',40)
+        self.tol = kwargs.get('tol',1e-6)
 
-        
-        
-    def _get_direction(self):
-        return np.atleast_2d(self.oracle(self.dim))
-
-    def optimize(self):        
-        n = 5
-        history = []
-        x0 = self.x0
-        f = 10**20
-        for i in range(n):
-            x_next, f, lower, upper, direction, x0 = self._get_next_point(x0,f)
-            
-            history.append((x_next, f, lower[0], upper[0], direction[0],x0))
-            x0 = x_next
-            
-        history = np.array(history).T
-        self.history = {}
-        
-        labels = ['x','f','lower','upper','direction','x0']
-        for label,ele in zip(labels,history):
-            self.history[label] = np.vstack([a for a in ele]) 
-        self.x = x_next
-        self.fun = f
-        logging.info(f'function calls:{self.n_calls}')
-        
-        return self
+        #tracking stats
+        self.t = 0
+        self.f = []
+        self.lower = []
+        self.upper = []
         
     
-    def _get_next_point(self,x0,old_f):
+    def _map_subdomain(self,s):
+        #maps points in subdomain <s> to real space
+        return self.l[self.t]*s + self.x[self.t]
+    
+    def optimize(self):        
+        while self.t < self.T:
+            logging.info(f'doing optimization step {self.t}')
+            #generate direction from oracle
+            self.l = np.vstack((self.l,self.oracle(self.dim)))
+
+            #find subspace bounds
+            self._get_subdomain_bounds()
+
+            #get next point via 1D optimization
+            self._get_next_point()
+
+            
+            if not self.t == 0:
+                dist = np.linalg.norm(self.x[self.t] - self.x[self.t-1])
+                logging.info(f'distance: {dist}')
+                if dist < self.tol:
+                    logging.info('optimization done!')
+                    break
+
+            self.t += 1
+        
+        return None
+        
+    
+    def _get_next_point(self):
         ''' find the next point via minimization of acquisition function in subdomain'''
-        direction = self._get_direction()
-        lower, upper = self._get_subdomain_bounds(self.bounds,x0,direction)
         
         #optimization step
-        sub_bounds = np.atleast_2d(np.array((lower[0],upper[0])))
+        sub_bounds = np.atleast_2d(np.array((self.lower[self.t],self.upper[self.t])))
 
         #t_next, func_val = grid_minimization(self._transformed_acq,sub_bounds,(direction[0],x0))
-        t_next, func_val = brent_minimization(self._transformed_acq,sub_bounds,(direction[0],x0))
+        s_next, func_val = brent_minimization(self._transformed_acq,sub_bounds)
 
-        if old_f < func_val:
-            t_next = 0.0
-            func_val = old_f
         
-        #res = opt.shgo(self._transformed_acq, sub_bounds, args = (direction[0],x0))
-        #res = opt.basinhopping(self._transformed_acq,0.0,args = (direction[0],x0))
+        if self.t == 0:
+            self.f.append(func_val)
+            self.x = np.vstack((self.x,self._map_subdomain(s_next)))
+        else:
+            if self.f[self.t - 1] < func_val:
+                self.x = np.vstack((self.x,self.x[self.t-1]))
+                self.f.append(self.f[self.t-1])
+            else:
+                self.x = np.vstack((self.x,self._map_subdomain(s_next)))
+                self.f.append(func_val)
         
-        x_next = direction[0] * t_next + x0
         
         if self.verbose:
-            fig,(ax,ax2) = plt.subplots(2,1)
-            n = 10
-            x = np.linspace(*self.bounds[0],n)
-            y = np.linspace(*self.bounds[1],n)
-            xx,yy = np.meshgrid(x,y)
-            pts = np.vstack((xx.ravel(),yy.ravel())).T
-            f = np.array([self.acq(pt,*self.acq_args) for pt in pts])
-            #plot function
-            ax.pcolor(xx,yy,f.reshape(n,n))
-
-            #plot subspace line
-            t = np.linspace(*sub_bounds[0])
-            sub = np.array([direction[0] * ele + x0 for ele in t])
-            ax.plot(*sub.T,'r+')
-            ax.plot(*x0,'o')
-            ax.plot(*x_next,'ro')
-
-            sub_f = np.array([self.acq(ele,*self.acq_args) for ele in sub])
-            ax2.plot(t,sub_f)
-            ax2.axvline(t_next,color='r')
-            ax2.axvline(0)
-
+            self._do_plotting()
             
-            
-        return x_next, func_val, lower, upper, direction, x0
-    
-    def _transformed_acq(self,t,direction,x0):
+        
+    def _transformed_acq(self,s):
         '''wrapper function for acq that transforms from subdomain var t to real domain var x'''
-        x = direction * t + x0
-        self.n_calls = self.n_calls + 1
+        x = self._map_subdomain(s)
+        #self.n_calls = self.n_calls + 1
         return self.acq(x,*self.acq_args)
     
-    def _get_subdomain_bounds(self,bounds,x0,direction):
-        '''get subdomain bounds, can handle multiple directions from oracle at once'''
+    def _get_subdomain_bounds(self):
+        '''get subdomain bounds'''
         #logging.info('getting subdomain')
         #logging.info(f'direction vector:{direction}')
         #logging.info(f'point:{x0}')
         #make sure these are numpy arrays
-        old_lower = np.array(bounds.T[0])
-        old_upper = np.array(bounds.T[1])
+        old_lower = np.array(self.bounds.T[0])
+        old_upper = np.array(self.bounds.T[1])
 
         #define the output arrays
         lower = np.empty((1))
         upper = np.empty((1))
 
-        for j in range(len(direction)):
-            v = direction[j]
-            if len(old_lower) != len(v) or len(old_upper) != len(v):
-                raise ValueError("Basis needs to have the same dimension than the bounds")
-            temp_l = np.empty_like(v)
-            temp_u = np.empty_like(v)
-            for i in range(len(v)):
-                if v[i] > 0:
-                    temp_u[i] = (old_upper[i]-x0[i])/v[i]
-                    temp_l[i] = (old_lower[i]-x0[i])/v[i]
-                elif v[i] < 0:
-                    temp_l[i] = (old_upper[i]-x0[i])/v[i]
-                    temp_u[i] = (old_lower[i]-x0[i])/v[i]
-                else:
-                    temp_l[i] = -np.inf
-                    temp_u[i] = np.inf
-            #we use the minimum distance to the boundaries to define our new bounds
-            upper[j] = np.min(temp_u)
-            lower[j] = np.max(temp_l)
+        v = self.l[self.t]
+        if len(old_lower) != len(v) or len(old_upper) != len(v):
+            raise ValueError("Basis needs to have the same dimension than the bounds")
+        temp_l = np.empty_like(v)
+        temp_u = np.empty_like(v)
+        for i in range(len(v)):
+            if v[i] > 0:
+                temp_u[i] = (old_upper[i]-self.x[self.t][i])/v[i]
+                temp_l[i] = (old_lower[i]-self.x[self.t][i])/v[i]
+            elif v[i] < 0:
+                temp_l[i] = (old_upper[i]-self.x[self.t][i])/v[i]
+                temp_u[i] = (old_lower[i]-self.x[self.t][i])/v[i]
+            else:
+                temp_l[i] = -np.inf
+                temp_u[i] = np.inf
+        #we use the minimum distance to the boundaries to define our new bounds
+        self.upper.append(np.min(temp_u))
+        self.lower.append(np.max(temp_l))
 
-        return lower, upper
+        #return lower, upper
 
-def brent_minimization(func,bounds,args):
-    res = opt.minimize_scalar(func,bounds=bounds[0],method='Bounded',args = args)
+    def _do_plotting(self):
+        fig,(ax,ax2) = plt.subplots(2,1)
+        n = 30
+        x = np.linspace(*self.bounds[0],n)
+        y = np.linspace(*self.bounds[1],n)
+        xx,yy = np.meshgrid(x,y)
+        pts = np.vstack((xx.ravel(),yy.ravel())).T
+        f = np.array([self.acq(pt,*self.acq_args) for pt in pts])
+        #plot function
+        ax.pcolor(xx,yy,f.reshape(n,n))
+
+        #plot subspace line
+        s = np.linspace(self.lower[self.t],self.upper[self.t])
+        sub = np.array([self._map_subdomain(ele) for ele in s])
+        ax.plot(*sub.T,'r+')
+        ax.plot(*self.x[self.t - 1],'o')
+        ax.plot(*self.x[self.t],'ro')
+        ax.set_xlabel('$x_1$')
+        ax.set_ylabel('$x_2$')
+            
+        sub_f = np.array([self.acq(ele,*self.acq_args) for ele in sub])
+        ax2.plot(s,sub_f)
+        #ax2.axvline(t_next,color='r')
+        ax2.axvline(0)
+        ax2.set_ylabel('$f$')
+        ax2.set_xlabel('t')
+        
+
+def brent_minimization(func,sbounds):
+    res = opt.minimize_scalar(func,bounds=sbounds[0],method='Bounded')
     return res.x, res.fun
     
 def grid_minimization(func,bounds,args):

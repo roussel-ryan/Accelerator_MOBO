@@ -12,7 +12,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 
-def expected_improvement(X, X_sample, gpr, xi=0.01):
+def expected_improvement(X, gpr, xi=0.01):
     '''
     Computes the EI at points X based on existing samples X_sample
     and Y_sample using a Gaussian process surrogate model.
@@ -28,7 +28,7 @@ def expected_improvement(X, X_sample, gpr, xi=0.01):
         Expected improvements at points X.
     '''
     mu, sigma = gpr.predict(X, return_std=True)
-    mu_sample = gpr.predict(X_sample)
+    mu_sample = gpr.predict(gpr.X_train_)
     
     sigma = sigma.reshape(-1, 1)
     # Needed for noise-based model,
@@ -52,7 +52,7 @@ def mean(X,gpr):
     '''
     return gpr.predict(X)
 
-def upper_confidence_bound(X, X_sample, gpr, kappa = 0.1):
+def upper_confidence_bound(X, gpr, kappa = 0.1):
     '''
     Upper confidence bound acquisition function
 

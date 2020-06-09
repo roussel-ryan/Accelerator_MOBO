@@ -1,0 +1,46 @@
+import numpy as np
+import copy
+import logging
+
+
+def update_modified_confidences(t,obj):
+    #update modified confidence intervals for the function
+    obj.Cf.append(c_int_array(obj.Cf[t-1],obj.Qf[t-1]))
+
+    #update modified confidence intervals for the conditions + track if the points are safe
+    cond = np.ones((obj.n_cond,obj.npts))
+    Cit = np.empty((obj.n_cond,obj.npts,2))
+    for i in range(obj.n_cond):
+        #logging.info(obj.Ci[t-1].transpose(
+        Cit[i] = c_int_array(obj.Ci[t-1].transpose(1,0,2)[i],obj.Qi[t-1].transpose(1,0,2)[i])
+        cond[i] = (Cit[i].T[0] < obj.h[i])
+        
+    #must transpose Cit back s.t. array shape is (npts,n_cond,2)
+    obj.Ci.append(Cit.transpose(1,0,2))
+
+    obj.cond = cond
+
+def update_confidences(t,obj):
+    obj.Qf.append(obj._get_confidence(obj.D,obj.gprf))
+    q = np.empty((obj.n_cond,obj.npts,2))
+    for i in range(obj.n_cond):
+        q[i] = obj._get_confidence(obj.D,obj.gprc[i])
+    obj.Qi.append(q.transpose((1,0,2)))
+    
+    
+def c_int_single(a,b):
+    '''a,b are bounds of each region'''
+    p = np.vstack((a,b)).T
+    ans = np.array((np.max(p[0]),np.min(p[1])))
+    if ans[0] > ans[1]:
+        ans = np.ones_like(ans)*(np.nan)
+
+    return ans
+
+def c_int_array(a,b):
+    assert len(a) == len(b)
+    
+    res = np.empty((len(a),2))
+    for i in range(len(a)):
+        res[i] = c_int_single(a[i],b[i])
+    return res

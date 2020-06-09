@@ -1,0 +1,36 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_conditions(t,obj):
+    assert obj.D.shape[1] == 1
+    fig,ax = plt.subplots(obj.n_cond,1)
+    if not isinstance(ax,np.ndarray):
+        ax = [ax]
+    cl = 10
+    for m in range(obj.n_cond):
+        #ax[m].fill_between(obj.D.flatten(),np.clip(obj.Qi[t-1][:,m].T[0],-cl,cl),
+        #                   np.clip(obj.Qi[t-1][:,m].T[1],-cl,cl),
+        #                   fc='C1',alpha=0.5,label='Qi[t-1]')
+        
+        #ax[m].fill_between(obj.D.flatten(),np.clip(obj.Ci[t-1][:,m].T[0],-cl,cl),
+        #                   np.clip(obj.Ci[t-1][:,m].T[1],-cl,cl),
+        #                   fc='C3',alpha=0.5,label='Ci[t-1]')
+        
+        ax[m].fill_between(obj.D.flatten(),np.clip(obj.Ci[t][:,m].T[0],-cl,cl),
+                           np.clip(obj.Ci[t][:,m].T[1],-cl,cl),alpha = 0.5,label='Ci[t]',fc = 'C0')
+        
+        tmu,tstd = obj.gprc[m].predict(obj.D,return_std=True)
+        ax[m].plot(obj.D.flatten(),tmu.flatten(),c='C0',label='gprc.predict')
+        #ax[m].plot(obj.D.flatten(),np.clip(obj.Ci[t][:,m].T[0],-cl,cl),c='C0')
+        
+        #ax[m].plot(obj.S[t].flatten(),np.zeros_like(obj.S[t].flatten()),'+',label='S[t]')
+        ax[m].axvspan(np.ma.min(obj.S[t]),np.ma.max(obj.S[t]),color = 'r',alpha = 0.25,zorder=0,label='Safe region')
+        ax[m].plot(obj.G[t].flatten(),np.zeros_like(obj.G[t].flatten()),'+g',label='G[t]')
+        ax[m].plot(obj.X[t-1].flatten(),obj.C[t-1][:,m].flatten(),'+C1',label='C[t]')
+
+        #plot objective
+        #ax[m].plot(obj.D.flatten(),(obj.Qf[t-1].T[1] + obj.Qf[t-1].T[0])/2,c = 'C3',label = 'gprf.predict')
+        
+        ax[m].set_ylim(-1.5,1.5)
+
+    return fig,ax
