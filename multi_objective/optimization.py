@@ -6,9 +6,13 @@ from scipy.optimize import minimize
 from . import EI_tools as EIT
 from . import pareto_tools as PT
 
+from ..lineBO import optimizer as lineOpt
+from ..lineBO import oracles
+
+
 import logging
 
-def get_next_point(F,GPRs,bounds,r,**kwargs):
+def get_next_point(F,GPRs,bounds,r,x0,**kwargs):
     '''
     get the next evaluation point for X based on expected hypervolume improvement
     -----------------------------------------------------------
@@ -31,8 +35,27 @@ def get_next_point(F,GPRs,bounds,r,**kwargs):
     
     if dim == 2:
     
-        new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,F,r,A,B))
-        return new_point
+        #new_point = layered_minimization(get_EHVI, bounds, args = (GPRs,F,r,A,B))
+        s = PT.get_PF(F)
+        s = PT.sort_along_first_axis(s)
+        fargs = [GPRs,s,r,A,B]
+        obj = EIT.get_EHVI
+        lineBO = lineOpt.LineOpt(bounds,oracles.random,obj,args = fargs,x0=x0)
+        res = lineBO.optimize()
+
+        #if distance between new point and old point is small, 
+        #start LineOpt at a random location
+        norm_dist = np.linalg.norm(res.x - x0) / np.linalg.norm(x0)
+        logging.info(f'normalized distance between opt.x and x0: {norm_dist}')
+        logging.info(f'res.x: {res.x}')
+        logging.info(f'x0: {x0}')
+        if norm_dist < 1e-3:
+            x0 = np.random.uniform(bounds[:,0],bounds[:,1])
+            lineBO = lineOpt.LineOpt(bounds,oracles.random,obj,args = fargs,x0=x0)
+            res = lineBO.optimize()
+            logging.info(f'new optimized point: {res.x}')
+
+        return res.x
         
     elif dim == 3:
         pass
