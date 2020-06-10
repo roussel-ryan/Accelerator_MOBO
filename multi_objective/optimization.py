@@ -17,7 +17,6 @@ def get_next_point(F,GPRs,bounds,r,x0,**kwargs):
     get the next evaluation point for X based on expected hypervolume improvement
     -----------------------------------------------------------
 
-    X: array of input space vectors
     F: array of objective space vectors
     GPRs: list of scikit-learn GaussianProcessRegressors that have been trained 
              on (X,F)

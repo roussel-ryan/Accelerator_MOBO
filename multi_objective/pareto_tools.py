@@ -85,7 +85,6 @@ def sort_along_first_axis(s):
 
 def get_hypervolume(F,r):
     ''' use pymoo to calcuate HV'''
-    S = get_non_dominated_set(F)
     hv = get_performance_indicator('hv',ref_point = r)
     return hv.calc(F)
 
