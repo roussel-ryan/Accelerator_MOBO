@@ -37,25 +37,25 @@ def PSI(a,b,p):
                        (a - mu)*norm.cdf(np.divide(A - mu,sigma))))
     return val
 
-def get_EHVI(X,GPRs,S,r,A,B = None):
+def get_EHVI(X,GPRs,S,B,A = None):
     '''
     x: point input from optimizer
     S: set of sorted, nondominated observed points
     GPRs: list of GP regressors
     r: reference point
     '''
-    #if B is not given, use ref point
-    if B.any() == None:
-        B = r
-        
+
+    if A is None:
+        A = np.zeros(2)
+    
     dim = len(X)
-    f = np.array([ele.predict(X.reshape(-1,dim),return_std=True) for ele in GPRs]).T[0]
-    #logging.info(f)
-    ehvi = -EHVI_2D(f[0],f[1],S,r,A,B)
+
+    f = np.array([ele.predict(X.reshape(-1,dim)) for ele in GPRs]).reshape(2,2).T
+    ehvi = -EHVI_2D(f[0],f[1],S,B,A)
     #logging.info((f[0],f[1],ehvi))
     return ehvi
 
-def EHVI_2D(mu,sigma,Y,r,A,B,verbose = False):
+def EHVI_2D(mu,sigma,Y,B,A,verbose = False):
     #A = kwargs.get('A',np.zeros(2))
     #B = kwargs.get('B',r)
     
@@ -63,10 +63,11 @@ def EHVI_2D(mu,sigma,Y,r,A,B,verbose = False):
     n = len(Y)
 
     #make sure that the points are sorted along first axis in decending order
+    #logging.info(f'f1: {Y.T[0]}')
     assert np.all(np.diff(Y.T[0]) <= 0)
     
     #add bounding points to set
-    Y = np.vstack(((r[0], A[1]),Y,(A[0],r[1])))
+    Y = np.vstack(((B[0], A[1]),Y,(A[0],B[1])))
     #logging.info(len(Y))
 
     sum1 = 0

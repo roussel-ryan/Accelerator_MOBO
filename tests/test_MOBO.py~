@@ -1,0 +1,97 @@
+import logging
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+logging.basicConfig(level=logging.INFO)
+from GaussianProcessTools.multi_objective import MOBO
+
+import GPy
+
+from GaussianProcessTools import optimizers
+from GaussianProcessTools import constraints
+
+logging.getLogger('matplotlib').setLevel(logging.INFO)
+
+def f(x):
+    f1 = np.linalg.norm(x - np.array((1,1)))
+    f2 = np.linalg.norm(x + np.array((1,1)))
+    return np.array((f1,f2)).reshape(-1,2)
+
+def is_positive(c):
+    return c > 0.0
+
+def c_observe(x):
+    return x[0]
+
+def main():
+
+    bounds = np.array(((-2,2),(-2,2)))
+
+    k1 = GPy.kern.RBF(lengthscale = 1.0, input_dim = 2,variance=0.001)
+    k2 = GPy.kern.RBF(lengthscale = 1.0, input_dim = 2,variance=0.001)
+    k = [k1,k2]
+    r = np.ones(2)*4.0
+
+    n_init = 5
+    X = np.random.uniform(-2,2,(n_init,2))
+    Y = np.vstack([f(ele) for ele in X])
+    C = np.vstack([c_observe(ele) for ele in X])
+    
+    GPRs = [GPy.models.GPRegression(X,Y[:,i].reshape(-1,1),kernel = k[i],noise_var=0.0001) for i in range(2)]
+
+    #ck = GPy.kern.RBF(lengthscale = 0.01, input_dim = 2,variance=0.001)
+    ck = GPy.kern.Exponential(input_dim = 2,variance=0.001)
+    cGPR = GPy.models.GPRegression(X,C,ck,noise_var=0.0001)
+    c1 = constraints.Constraint(cGPR,is_positive)
+    
+    
+    opt = MOBO.MultiObjectiveBayesianOptimizer(bounds,
+                                               GPRs,r,
+                                               constraints = [c1])
+    
+    lineBO = optimizers.ParallelLineOpt(tol=1e-4)
+
+    for i in range(15):
+        logging.info(opt.GPRs[0])
+        logging.info(opt.constraints[0].GPR)
+        opt.fit(X,Y,C)
+        
+        X_new = opt.get_next_point(lineBO)
+        Y_new = f(X_new)
+        C_new = c_observe(X_new)
+        
+        X = np.vstack((X,X_new))
+        Y = np.vstack((Y,Y_new))
+        C = np.vstack((C,C_new))
+
+    opt.plot_acq()
+    n = 20
+    
+    xx,yy = np.meshgrid(*[np.linspace(-2,2,n) for i in [0,1]])
+    pts = np.vstack((xx.ravel(),yy.ravel())).T
+    fv = []
+    mc = []
+    for i in range(n**2):
+        fv.append(f(pts[i]))
+        mc.append(opt.constraints[0].predict(pts[i].reshape(-1,2))[0])
+    fv = np.vstack(fv)
+    mc = np.array(mc)
+ #   logging.info(mc.shape)
+    
+    fig,ax = plt.subplots(4,1)
+    for i in [0,1]:
+        ax[i].pcolor(xx,yy,fv[:,i].reshape(n,n))
+        ax[i].plot(*X[n_init:].T,'r+')
+        ax[i].plot(*X[:n_init].T,'g+')
+
+    ax[2].pcolor(xx,yy,mc.reshape(n,n))
+    ax[3].plot(*Y[n_init:].T,'r+')
+    ax[3].plot(*Y[:n_init].T,'g+')
+
+if __name__ == '__main__':
+    main()
+    plt.show()
+    
+
+

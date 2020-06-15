@@ -46,6 +46,18 @@ def in_set(pt,s):
 def get_PF(s):
     return get_non_dominated_set(s)
 
+def get_PF_indicies(s):
+    #get indicies of PF elements from np array
+    F = get_non_dominated_set(s)
+
+    indicies = np.empty(len(F),dtype=np.int)
+    for i in range(len(F)):
+        for j in range(len(s)):
+            if np.all(s[j] == F[i]):
+                indicies[i] = j
+
+    return indicies
+        
 def get_non_dominated_set(s):
     '''implimentation of Kung's Algorithm'''
         
@@ -102,10 +114,9 @@ def main():
     ax.plot(*s.T,'+')
 
     P = get_non_dominated_set(s)
-
+    logging.info(get_PF_indicies(s))
     ax.plot(*P.T,'.')
 
-    logging.info(in_set(np.array([0,0]),P.T))
 
 if __name__=='__main__':
     main()

@@ -50,7 +50,8 @@ class LineOpt:
         self.f = []
         self.lower = []
         self.upper = []
-        
+
+        self.f_calls = 0
     
     def _map_subdomain(self,s):
         #maps points in subdomain <s> to real space
@@ -58,7 +59,7 @@ class LineOpt:
     
     def optimize(self):        
         while self.t < self.T:
-            logging.info(f'doing optimization step {self.t}')
+            logging.debug(f'doing optimization step {self.t}')
             #generate direction from oracle
             self.l = np.vstack((self.l,self.oracle(self.dim)))
 
@@ -71,9 +72,10 @@ class LineOpt:
             
             if not self.t == 0:
                 dist = np.linalg.norm(self.x[self.t] - self.x[self.t-1])
-                logging.info(f'distance: {dist}')
+                
+                logging.debug(f'x[t]: {self.x[self.t]}, x[t-1]: {self.x[self.t-1]}, distance: {dist}')
                 if dist < self.tol:
-                    logging.info('optimization done!')
+                    logging.debug(f'optimization done! used {self.f_calls} function calls')
                     break
 
             self.t += 1
@@ -110,7 +112,7 @@ class LineOpt:
     def _transformed_acq(self,s):
         '''wrapper function for acq that transforms from subdomain var t to real domain var x'''
         x = self._map_subdomain(s)
-        #self.n_calls = self.n_calls + 1
+        self.f_calls = self.f_calls + 1
         return self.acq(x,*self.acq_args)
     
     def _get_subdomain_bounds(self):

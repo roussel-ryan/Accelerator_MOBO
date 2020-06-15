@@ -6,6 +6,8 @@ import logging
 from . import pareto
 from . import EHVI
 
+from .. import optimizers
+
 class MultiObjectiveBayesianOptimizer:
     """Multiobjective bayesian optimizer
 
@@ -64,7 +66,7 @@ class MultiObjectiveBayesianOptimizer:
             variable
         
         GPRs : list
-            List of scikit_learn GaussianProcessRegressor objects
+            List of GPy GPRegression models
             (one for each independant variable).
 
         B : ndarray, shape (m,)
@@ -96,7 +98,7 @@ class MultiObjectiveBayesianOptimizer:
         self.verbose      = kwargs.get('verbose',False)
 
         self.n_constr     = len(self.constraints)
-        self._use_constraints = 1 if self.n_constr > 0 else 1
+        self._use_constraints = 1 if self.n_constr > 0 else 0
         
     
     def fit(self, X, F, C=None):
@@ -107,15 +109,16 @@ class MultiObjectiveBayesianOptimizer:
 
         #train objective function GPs
         for i in range(self.obj_dim):
-            self.GPRs[i].fit(self.X,self.F[:,i])
+            self.GPRs[i].set_XY(X = self.X,Y = self.F[:,i].reshape(-1,1))
+            self.GPRs[i].optimize(max_f_eval = 1000)
 
         #train constraint function GPs
         if self._use_constraints:
             for j in range(self.n_constr):
-                self.constraints[j].fit(X,C[:,j])
+                self.constraints[j].fit(X, C[:,j].reshape(-1,1))
             
     
-    def get_next_point(self,optimizer, return_value = False):
+    def get_next_point(self, optimizer, return_value = False):
         '''get the point that optimizes TEHVI acq function
 
         Parameters:
@@ -138,17 +141,24 @@ class MultiObjectiveBayesianOptimizer:
         '''
         if self.obj_dim == 2:
             self.PF = pareto.get_PF(self.F) 
-            self.PF = pareto.sort_along_first_axis(self.PF)[::-1]
+            self.PF = pareto.sort_along_first_axis(self.PF)
 
-            fargs = [self.GPRs,self.PF,self.A,self.B]
+            fargs = [self.GPRs,self.PF,self.B,self.A]
             x0 = self.X[-1]
 
             if not self._use_constraints:
                 obj = EHVI.get_EHVI
             else:
                 obj = self._constr_EHVI
-            
-            res = optimizer.minimize(bounds,
+
+            if isinstance(optimizer,optimizers.ParallelLineOpt):
+                #get PF x values as x0
+                PF_indicies = pareto.get_PF_indicies(self.F)
+                x0 = self.X[PF_indicies]
+
+                
+                
+            res = optimizer.minimize(self.bounds,
                                      obj,
                                      args = fargs,
                                      x0 = x0)
@@ -156,10 +166,34 @@ class MultiObjectiveBayesianOptimizer:
             return res.x, res.f
         else:
             return res.x
-        
-        
+
+    def plot_acq(self,ax = None):
+        if ax is None:
+            fig,ax = plt.subplots()
+
+        self.PF = pareto.get_PF(self.F) 
+        self.PF = pareto.sort_along_first_axis(self.PF)
+
+        fargs = [self.GPRs,self.PF,self.B,self.A]    
+            
+        n = 20
+        x = np.linspace(*self.bounds[0,:],n)
+        y = np.linspace(*self.bounds[1,:],n)
+        xx, yy = np.meshgrid(x,y)
+        pts = np.vstack((xx.ravel(),yy.ravel())).T
+
+        f = []
+        for i in range(n**2):
+            if not self._use_constraints:
+                f.append(EHVI.get_EHVI(pts[i],*fargs))
+            else:
+                f.append(self._constr_EHVI(pts[i],*fargs))
+        f = np.array(f).reshape(n,n)
+        c = ax.pcolor(xx,yy,f)
+        ax.figure.colorbar(c,ax=ax)          
+            
     def _constr_EHVI(self,x,*args):
-        cval = np.array([ele.predict(x) for ele in self.constraints])
+        cval = np.array([ele.predict(x.reshape(-1,self.input_dim)) for ele in self.constraints])
         constr_val = np.prod(cval)
         self.constraint_vals = cval
         return EHVI.get_EHVI(x,*args) * constr_val
