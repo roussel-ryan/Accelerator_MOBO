@@ -19,7 +19,7 @@ class LineOpt:
         ------------------
         args                  arguments for optimization function (default: [])
         oracle                direction choosing oracle (default: random)
-        X0                    initial point to start optimization (default: np.random.uniform)
+        x0                    initial point to start optimization (default: np.random.uniform)
         verbose               display diagnostic plotting
         T                     step budget (default:10)
         tol                   convergence tolerance (default: 1e-6)
@@ -32,14 +32,17 @@ class LineOpt:
         self.acq        = acq
         
         #set up oracle and acq_args
-        self.oracle = kwargs.get('oracle',oracles.random)
-        self.acq_args = kwargs.get('args',[])
+        self.oracle = kwargs.get('oracle',oracles.RandomOracle(self.dim))
+        #check oracle
+        #assert isinstance(type(self.oracle),oracles.Oracle)
+        self.args = kwargs.get('args',[])
 
         #initialize storage vectors
-        self.x = kwargs.get('X0',np.random.uniform(bounds[:,0],bounds[:,1]).reshape(-1,self.dim))
-        self.l = np.atleast_2d(self.oracle(self.dim))
+        self.x = kwargs.get('x0',
+                            np.random.uniform(bounds[:,0],
+                                              bounds[:,1]).reshape(-1,self.dim))
+        self.x = np.atleast_2d(self.x)
 
-        #logging.info((self.x,self.l))
         
         self.verbose = kwargs.get('verbose',False)
         self.T = kwargs.get('T',40)
@@ -52,7 +55,11 @@ class LineOpt:
         self.upper = []
 
         self.f_calls = 0
-    
+
+        logging.info('Starting lineOpt')
+        logging.info(f'x0: {self.x}')
+        logging.info(f'using oracle {self.oracle.name}')
+                
     def _map_subdomain(self,s):
         #maps points in subdomain <s> to real space
         return self.l[self.t]*s + self.x[self.t]
@@ -61,8 +68,17 @@ class LineOpt:
         while self.t < self.T:
             logging.debug(f'doing optimization step {self.t}')
             #generate direction from oracle
-            self.l = np.vstack((self.l,self.oracle(self.dim)))
+            if self.t == 0:
+                self.l = self.oracle.get_direction(self.x[-1],
+                                                   self.acq,
+                                                   *self.args).reshape(-1,self.dim)
+            else:
+                self.l = np.vstack((self.l,
+                                self.oracle.get_direction(self.x[-1],
+                                                          self.acq,
+                                                          *self.args)))
 
+                            
             #find subspace bounds
             self._get_subdomain_bounds()
 
@@ -71,11 +87,11 @@ class LineOpt:
 
             
             if not self.t == 0:
-                dist = np.linalg.norm(self.x[self.t] - self.x[self.t-1])
+                dist = np.linalg.norm(self.x[-1] - self.x[-2])
                 
-                logging.debug(f'x[t]: {self.x[self.t]}, x[t-1]: {self.x[self.t-1]}, v: {self.l[-1]}, distance: {dist}')
+                #logging.info(f'x[t]: {self.x[-1]}, x[t-1]: {self.x[-2]}, v: {self.l[-1]}, distance: {dist}')
                 if dist < self.tol:
-                    logging.debug(f'optimization done! used {self.f_calls} function calls')
+                    logging.info(f'optimization done! used {self.f_calls} function calls')
                     break
 
             self.t += 1
@@ -98,8 +114,8 @@ class LineOpt:
             self.x = np.vstack((self.x,self._map_subdomain(s_next)))
         else:
             if self.f[self.t - 1] < func_val:
-                self.x = np.vstack((self.x,self.x[self.t-1]))
-                self.f.append(self.f[self.t-1])
+                self.x = np.vstack((self.x,self.x[-1]))
+                self.f.append(self.f[-1])
             else:
                 self.x = np.vstack((self.x,self._map_subdomain(s_next)))
                 self.f.append(func_val)
@@ -113,7 +129,7 @@ class LineOpt:
         '''wrapper function for acq that transforms from subdomain var t to real domain var x'''
         x = self._map_subdomain(s)
         self.f_calls = self.f_calls + 1
-        return self.acq(x,*self.acq_args)
+        return self.acq(x,*self.args)
     
     def _get_subdomain_bounds(self):
         '''get subdomain bounds'''
@@ -128,18 +144,18 @@ class LineOpt:
         lower = np.empty((1))
         upper = np.empty((1))
 
-        v = self.l[self.t]
+        v = self.l[-1]
         if len(old_lower) != len(v) or len(old_upper) != len(v):
             raise ValueError("Basis needs to have the same dimension than the bounds")
         temp_l = np.empty_like(v)
         temp_u = np.empty_like(v)
         for i in range(len(v)):
             if v[i] > 0:
-                temp_u[i] = (old_upper[i]-self.x[self.t][i])/v[i]
-                temp_l[i] = (old_lower[i]-self.x[self.t][i])/v[i]
+                temp_u[i] = (old_upper[i]-self.x[-1][i])/v[i]
+                temp_l[i] = (old_lower[i]-self.x[-1][i])/v[i]
             elif v[i] < 0:
-                temp_l[i] = (old_upper[i]-self.x[self.t][i])/v[i]
-                temp_u[i] = (old_lower[i]-self.x[self.t][i])/v[i]
+                temp_l[i] = (old_upper[i]-self.x[-1][i])/v[i]
+                temp_u[i] = (old_lower[i]-self.x[-1][i])/v[i]
             else:
                 temp_l[i] = -np.inf
                 temp_u[i] = np.inf
@@ -156,20 +172,21 @@ class LineOpt:
         y = np.linspace(*self.bounds[1],n)
         xx,yy = np.meshgrid(x,y)
         pts = np.vstack((xx.ravel(),yy.ravel())).T
-        f = np.array([self.acq(pt,*self.acq_args) for pt in pts])
+        f = np.array([self.acq(pt,*self.args) for pt in pts])
         #plot function
         ax.pcolor(xx,yy,f.reshape(n,n))
 
         #plot subspace line
-        s = np.linspace(self.lower[self.t],self.upper[self.t])
+        s = np.linspace(self.lower[-1],self.upper[-1])
         sub = np.array([self._map_subdomain(ele) for ele in s])
         ax.plot(*sub.T,'r+')
-        ax.plot(*self.x[self.t - 1],'o')
-        ax.plot(*self.x[self.t],'ro')
+        ax.plot(*self.x[-2],'o',label='x[t-1]')
+        ax.plot(*self.x[-1],'ro',label='x[t]')
         ax.set_xlabel('$x_1$')
         ax.set_ylabel('$x_2$')
-            
-        sub_f = np.array([self.acq(ele,*self.acq_args) for ele in sub])
+        ax.legend()
+        
+        sub_f = np.array([self.acq(ele,*self.args) for ele in sub])
         ax2.plot(s,sub_f)
         #ax2.axvline(t_next,color='r')
         ax2.axvline(0)
@@ -178,8 +195,13 @@ class LineOpt:
         
 
 def brent_minimization(func,sbounds):
-    res = opt.minimize_scalar(func,bounds=sbounds[0],method='Bounded')
-    return res.x, res.fun
+    try:
+        res = opt.minimize_scalar(func,bounds=sbounds[0],method='Bounded')
+        return res.x, res.fun
+    #need exception to handle when bounds width < 1e-5
+    except UnboundLocalError:
+        print(1)
+        return sbounds[0][0], func(sbounds[0][0])
     
 def grid_minimization(func,bounds,args):
     n = 10
@@ -191,3 +213,11 @@ def grid_minimization(func,bounds,args):
             _min = res.fun
             _minx = res.x
     return _minx, _min
+
+if __name__ =='__main__':
+    def f(x):
+        return x**2
+
+    bnds = np.array((2-1e-10,2+1e-10)).reshape(-1,2)
+    x,fval = brent_minimization(f,bnds)
+    print((x,fval))

@@ -1,40 +1,47 @@
 import numpy as np
 np.seterr(divide='ignore',invalid='ignore')
-from scipy.stats import norm
+import scipy
 import logging
 
 #p = [mu,sigma,A,B]
+
+def cdf(s):
+    return 0.5*(1 + scipy.special.erf(s/np.sqrt(2)))
+
+def pdf(s):
+    return np.exp(-s**2 / 2) / (np.sqrt(2)*np.pi)
+
 def Z(p):
     mu,sigma,A,B = p
 #    logging.info((A,B))
     if sigma == 0.0 and (mu <= A or B <= mu):
         return 0
     else:
-        return norm.cdf(np.divide(B - mu,sigma)) - norm.cdf(np.divide(A - mu,sigma))
+        return cdf(np.divide(B - mu,sigma)) - cdf(np.divide(A - mu,sigma))
    
 def phi(x,p):
     mu,sigma,A,B = p
     if x <= A or B <= x:
         return 0.0
     else:
-        return Z(p) * np.divide(norm.pdf(np.divide(x - mu,sigma)),sigma)
+        return Z(p) * np.divide(pdf(np.divide(x - mu,sigma)),sigma)
 
 def PHI(x,p):
     mu,sigma,A,B = p
     if x <= A:
         return 0
     elif (A < x)*(x < B):
-        return Z(p) * (norm.cdf(np.divide(x - mu,sigma)) - 
-                       norm.cdf(np.divide(A - mu,sigma)))
+        return Z(p) * (cdf(np.divide(x - mu,sigma)) - 
+                       cdf(np.divide(A - mu,sigma)))
     else:
         return 1
 
 def PSI(a,b,p):
     mu,sigma,A,B = p
-    val = Z(p) * (sigma*norm.pdf(np.divide(b - mu,sigma)) +\
-                      (a - mu)*norm.cdf(np.divide(b - mu,sigma)) -\
-                      (sigma*norm.pdf(np.divide(A - mu,sigma)) + \
-                       (a - mu)*norm.cdf(np.divide(A - mu,sigma))))
+    val = Z(p) * (sigma*pdf(np.divide(b - mu,sigma)) +\
+                      (a - mu)*cdf(np.divide(b - mu,sigma)) -\
+                      (sigma*pdf(np.divide(A - mu,sigma)) + \
+                       (a - mu)*cdf(np.divide(A - mu,sigma))))
     return val
 
 def get_EHVI(X,GPRs,S,B,A = None):

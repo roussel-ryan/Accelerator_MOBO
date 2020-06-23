@@ -1,12 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from GaussianProcessTools.lineBO import optimizer
+from GaussianProcessTools import optimizers
 from GaussianProcessTools.lineBO import oracles
 import scipy.optimize as opt
 
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 def hartmann6D(x):
     alpha = np.array((1.0,1.2,3.0,3.2))
@@ -25,26 +25,29 @@ def hartmann6D(x):
 
 
 def obj(x):
-    #return hartmann6D(x)
+    return hartmann6D(x)
     #return (4 - 2.1*x[0]**2 + x[0]**4 / 3)*x[0]**2 + x[0]*x[1] + (-4 + 4*x[1]**2)*x[1]**2
 
 
     #return opt.rosen(x)
-    return np.linalg.norm(x - np.array((0.5,0.5)))
+    #return np.linalg.norm(x - np.array((0.5,0.5)))
 
-bounds = np.array(((-3,3),(-2,2)))
-#print(obj(np.array((0.2,0.15,0.47,0.27,0.31,0.65))))
+#bounds = np.array(((-3,3),(-2,2)))
+print(obj(np.array((0.2,0.15,0.47,0.27,0.31,0.65))))
 
-#bounds = np.vstack((np.zeros(6),np.ones(6))).T
-#x0 = np.random.uniform(len(bounds))
-x0 = np.array((-1,-1)).reshape(-1,2)
+bounds = np.vstack((np.zeros(6),np.ones(6))).T
+x0 = np.random.uniform(0,1,len(bounds)).reshape(-1,6)
+#x0 = np.array((-1,-1)).reshape(-1,2)
 logging.info(f'domain bounds: {bounds}')
-lineBO = optimizer.LineOpt(bounds,obj,x0 = x0,verbose=0)
+
+oracle = oracles.GradientOracle(bounds)
+
+lineBO = optimizers.LineOpt(verbose=0,T = 25,oracle = oracle)
 
 fig,ax = plt.subplots()
-lineBO.optimize()
+lineBO.minimize(bounds,obj,x0 = x0)
 
-ax.plot(np.array(lineBO.f).flatten())
-
+ax.plot(np.array(lineBO.history[1]).flatten())
+print(lineBO.history[1][-1])
 plt.show()
 

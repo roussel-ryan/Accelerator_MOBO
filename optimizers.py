@@ -28,7 +28,8 @@ class LineOpt(BlackBoxOptimizer):
                               **self.kwargs)
         opt.optimize()
         res = Result(opt.x[-1], opt.f[-1])
-
+        self.history = [opt.x,opt.f]
+        
         return res
 
 class ParallelLineOpt(BlackBoxOptimizer):
@@ -73,7 +74,8 @@ class ParallelLineOpt(BlackBoxOptimizer):
         '''
         
         n_points = 10
-        dim = bounds.shape[-1]
+        dim = bounds.shape[0]
+        logging.info(bounds)
         
         if x0 is None:
             x0 = np.random.uniform(bounds[:,0],
@@ -85,7 +87,7 @@ class ParallelLineOpt(BlackBoxOptimizer):
                 #add in random points to efficiently use resources
                 additional_points = np.random.uniform(bounds[:,0],
                                                       bounds[:,1],
-                                                      (self.n_cpus - len(x0) -1,dim))
+                                                      (self.n_cpus - len(x0) - 1,dim))
                 x0 = np.vstack((x0,additional_points))
             
         #create list of parameters

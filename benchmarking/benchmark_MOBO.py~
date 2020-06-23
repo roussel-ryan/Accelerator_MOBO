@@ -1,0 +1,136 @@
+import logging
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+logging.basicConfig(level=logging.INFO)
+from GaussianProcessTools.multi_objective import MOBO
+
+import GPy
+
+from GaussianProcessTools import optimizers
+from GaussianProcessTools import constraints
+
+from GaussianProcessTools.lineBO import oracles
+
+import utils
+
+from pymop.problems import zdt
+
+logging.getLogger('matplotlib').setLevel(logging.INFO)
+
+
+    
+def benchmark_ZDT1():
+    input_dim = 10
+    bounds = np.vstack((np.zeros(input_dim),
+                        np.ones(input_dim))).T
+    problem = zdt.ZDT1(n_var = input_dim)
+
+    #utils.plot_problem(problem,bounds)
+    
+    k1 = GPy.kern.RBF(lengthscale = 5.5, input_dim = input_dim,variance=0.01)
+    k2 = GPy.kern.RBF(lengthscale = 3.5, input_dim = input_dim,variance=0.01)
+    k = [k1,k2]
+    r = np.ones(2)*8.0
+    r[0] = 1.0
+
+    n_init = 3**input_dim
+    X = np.random.uniform(bounds[:,0],bounds[:,1],(n_init,input_dim))
+    Y = np.vstack([problem.evaluate(ele) for ele in X])
+
+    normalizer = GPy.util.normalizer.Standardize()
+    GPRs = [GPy.models.GPRegression(X,Y[:,i].reshape(-1,1),kernel = k[i],noise_var=0.1,normalizer = True) for i in range(2)]
+
+    for GPR in GPRs:
+        GPR.kern.variance.constrain_bounded(0.0,10.0)
+        GPR.kern.lengthscale.constrain_bounded(0.0,10.0)
+        
+    opt = MOBO.MultiObjectiveBayesianOptimizer(bounds,
+                                               GPRs,r,
+                                               n_restarts = 2,
+                                               optimization_freq = 5,
+                                               verbose=False)
+
+    
+    HVT = utils.HVTracker(problem,r)
+
+    oracle = oracles.GradientOracle(bounds)
+    #oracle = oracles.RandomOracle(input_dim)
+    lineBO = optimizers.LineOpt(tol=1e-4,
+                                oracle = oracle)#,
+                                #verbose=True)
+
+    pf_error = []
+    for i in range(250):
+        logging.info(opt.GPRs[0])
+        logging.info(opt.GPRs[1])
+        opt.fit(X,Y)
+        
+        X_new = opt.get_next_point(lineBO)
+        Y_new = problem.evaluate(X_new)
+
+        
+        X = np.vstack((X,X_new))
+        Y = np.vstack((Y,Y_new))
+
+        pf_error.append(HVT.get_PF_error(opt.PF))
+
+    pf_error = np.array(pf_error)
+
+    
+    fig,ax = plt.subplots()
+    ax.plot(*problem.pareto_front().T)
+    ax.plot(*opt.F.T,'r+')
+
+    #fig2,ax2 = plt.subplots()
+    #ax2.plot(pf_error)
+
+    return pf_error
+
+def run(fname):
+    n = 1
+    error = []
+    for i in range(0,n):
+        error.append(benchmark_ZDT1())
+        print(f'{i}-------------------------------------------------')
+    error = np.array(error)
+
+    np.save(fname,error)
+    
+def plot(fname,ax=None):
+    if ax is None:
+        fig,ax = plt.subplots()
+    
+    error = np.load(fname)
+    
+    ax.semilogy(error.T,'b',alpha = 0.1)
+
+    mean = np.average(error.T,axis=1)
+    ax.semilogy(mean,'r')
+    ax.set_title(fname)
+
+def do_plotting():
+    
+    #fnames = ['ZDT1_RandomLineOpt.npy',
+    #          'ZDT1_ParallelLineOpt.npy',
+    #          'ZDT1_GradientLineOpt.npy']
+    fnames = ['ZDT1_RandomLineOpt_5D.npy',
+              'ZDT1_GradientLineOpt_5D.npy',
+              'ZDT1_ParallelGradientLineOpt_5D.npy',
+              'ZDT1_RandomLineOpt.npy']
+
+    fig,axes = plt.subplots(len(fnames),1)
+    
+    for name,ax in zip(fnames,axes):
+        plot(name,ax)
+    
+if __name__ == '__main__':
+    #benchmark_ZDT1()
+    fname = 'ZDT1_GradientLineOpt_10D.npy' 
+    run(fname)
+    plot(fname)
+
+    #do_plotting()
+
+    plt.show()

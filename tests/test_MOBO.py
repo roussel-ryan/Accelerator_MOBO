@@ -28,8 +28,8 @@ def main():
 
     bounds = np.array(((-2,2),(-2,2)))
 
-    k1 = GPy.kern.RBF(lengthscale = 1.0, input_dim = 2,variance=0.001)
-    k2 = GPy.kern.RBF(lengthscale = 1.0, input_dim = 2,variance=0.001)
+    k1 = GPy.kern.RBF(lengthscale = 0.5, input_dim = 2,variance=0.001)
+    k2 = GPy.kern.RBF(lengthscale = 0.5, input_dim = 2,variance=0.001)
     k = [k1,k2]
     r = np.ones(2)*4.0
 
@@ -41,7 +41,7 @@ def main():
     GPRs = [GPy.models.GPRegression(X,Y[:,i].reshape(-1,1),kernel = k[i],noise_var=0.0001) for i in range(2)]
 
     #ck = GPy.kern.RBF(lengthscale = 0.01, input_dim = 2,variance=0.001)
-    ck = GPy.kern.Exponential(input_dim = 2,variance=0.001)
+    ck = GPy.kern.Exponential(lengthscale = 0.1, input_dim = 2,variance=0.001)
     cGPR = GPy.models.GPRegression(X,C,ck,noise_var=0.0001)
     c1 = constraints.Constraint(cGPR,is_positive)
     
@@ -49,13 +49,15 @@ def main():
     opt = MOBO.MultiObjectiveBayesianOptimizer(bounds,
                                                GPRs,r,
                                                constraints = [c1])
+
     
-    lineBO = optimizers.ParallelLineOpt(tol=1e-4)
+    lineBO = optimizers.LineOpt(tol=1e-4)
 
     for i in range(15):
         logging.info(opt.GPRs[0])
-        logging.info(opt.constraints[0].GPR)
+        #logging.info(opt.constraints[0].GPR)
         opt.fit(X,Y,C)
+        #opt.fit(X,Y)
         
         X_new = opt.get_next_point(lineBO)
         Y_new = f(X_new)
@@ -74,9 +76,9 @@ def main():
     mc = []
     for i in range(n**2):
         fv.append(f(pts[i]))
-        mc.append(opt.constraints[0].predict(pts[i].reshape(-1,2))[0])
+        #mc.append(opt.constraints[0].predict(pts[i].reshape(-1,2))[0])
     fv = np.vstack(fv)
-    mc = np.array(mc)
+    #mc = np.array(mc)
  #   logging.info(mc.shape)
     
     fig,ax = plt.subplots(4,1)
@@ -85,10 +87,11 @@ def main():
         ax[i].plot(*X[n_init:].T,'r+')
         ax[i].plot(*X[:n_init].T,'g+')
 
-    ax[2].pcolor(xx,yy,mc.reshape(n,n))
+    #ax[2].pcolor(xx,yy,mc.reshape(n,n))
     ax[3].plot(*Y[n_init:].T,'r+',label='GP points')
     ax[3].plot(*Y[:n_init].T,'g+',label='Initial points')
-
+    ax[3].plot((0,2*np.sqrt(2)),(2*np.sqrt(2),0))
+    
 if __name__ == '__main__':
     main()
     plt.show()
