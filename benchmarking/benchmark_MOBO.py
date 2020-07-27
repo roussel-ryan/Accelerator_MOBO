@@ -1,4 +1,5 @@
 import logging
+import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,7 +36,7 @@ def benchmark_ZDT1():
     r = np.ones(2)*8.0
     r[0] = 1.0
 
-    n_init = 3**input_dim
+    n_init = 2**input_dim
     X = np.random.uniform(bounds[:,0],bounds[:,1],(n_init,input_dim))
     Y = np.vstack([problem.evaluate(ele) for ele in X])
 
@@ -43,13 +44,13 @@ def benchmark_ZDT1():
     GPRs = [GPy.models.GPRegression(X,Y[:,i].reshape(-1,1),kernel = k[i],noise_var=0.1,normalizer = True) for i in range(2)]
 
     for GPR in GPRs:
-        GPR.kern.variance.constrain_bounded(0.0,10.0)
+        GPR.kern.variance.constrain_bounded(0.0,0.1)
         GPR.kern.lengthscale.constrain_bounded(0.0,10.0)
         
     opt = MOBO.MultiObjectiveBayesianOptimizer(bounds,
                                                GPRs,r,
                                                n_restarts = 2,
-                                               optimization_freq = 5,
+                                               optimization_freq = 10,
                                                verbose=False)
 
     
@@ -62,7 +63,7 @@ def benchmark_ZDT1():
                                 #verbose=True)
 
     pf_error = []
-    for i in range(250):
+    for i in range(200):
         logging.info(opt.GPRs[0])
         logging.info(opt.GPRs[1])
         opt.fit(X,Y)
@@ -81,12 +82,23 @@ def benchmark_ZDT1():
     
     fig,ax = plt.subplots()
     ax.plot(*problem.pareto_front().T)
-    ax.plot(*opt.F.T,'r+')
+    ax.plot(*opt.F[:n_init].T,'g+')
+    ax.plot(*opt.F[n_init:].T,'r+')
 
-    #fig2,ax2 = plt.subplots()
-    #ax2.plot(pf_error)
+    with open('benchmark.log','wb') as f:
+        pickle.dump(opt.history,f)
+
+    fig2,ax2 = plt.subplots()
+    ax2.plot(pf_error)
 
     return pf_error
+
+def load():
+    with open('benchmark.log','rb') as f:
+        history = pickle.load(f)
+
+    for ele in history:
+        logging.info(ele.stats['t'])
 
 def run(fname):
     n = 1
@@ -129,8 +141,8 @@ if __name__ == '__main__':
     #benchmark_ZDT1()
     fname = 'ZDT1_GradientLineOpt_10D.npy' 
     run(fname)
-    plot(fname)
-
+    #plot(fname)
+    #load()
     #do_plotting()
 
     plt.show()

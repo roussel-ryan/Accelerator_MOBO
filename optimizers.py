@@ -6,12 +6,22 @@ import multiprocessing
 from .lineBO import lineOpt
 
 class Result:
+    '''Result class
+
+    Mirrors scipy.minimize result class
+
+
+    '''
     def __init__(self,x,f):
         self.x = x
         self.f = f
 
 
 class BlackBoxOptimizer:
+    '''BlackBoxOptimizer class 
+
+    Class that should be subclassed by optimizer objects
+    '''
     def __init__(self):
         pass
 
@@ -19,16 +29,69 @@ class BlackBoxOptimizer:
         pass
 
 class LineOpt(BlackBoxOptimizer):
+    '''LineOptimizer class
+
+    This optimizer uses a variation of the LineOptimizer method found in 
+    https://arxiv.org/pdf/1902.03229.pdf.
+
+    Essentially it optimizes the function f in a 1D subdomain, 
+    which is selected using an 'oracle' which determines the subspace
+    (see lineBO/oracles.py)
+
+    Is this method actually better than other high dimentional optimization 
+    methods?
+    Its a heuristic so it's up to you. However, this subspace method must
+    be used when trying to use any type of grid based method such as
+    SafeOpt or StageOpt (see reference)
+
+    Attributes
+    ----------
+    history : list
+         List of result objects from each call of minimize()
+    
+
+    '''
+
+
+    
     def __init__(self,**kwargs):
         self.kwargs = kwargs
-
+        self.history = []
+        
     def minimize(self, bounds, func, args = [], x0 = None):
+        '''minimization function
+        
+        Uses LineOpt method to minimize a black box function
+        
+        Parameters
+        ----------
+        bounds : ndarray, shape (D, 2)
+             Bounds of D-dimentional domain
+
+        func : callable
+             Function to be optimized, must be of the form f(x, *args)
+
+        args : tuple, optional
+             Arguments supplied to target function
+
+        x0 : ndarray, shape (1,D)
+            Initial guess point for optimization
+        
+
+        Returns
+        -------
+        res : Result
+            Result object which stores the optima value and location
+
+        '''
+
+
         opt = lineOpt.LineOpt(bounds,
                               func, args = args, x0 = x0,
                               **self.kwargs)
         opt.optimize()
         res = Result(opt.x[-1], opt.f[-1])
-        self.history = [opt.x,opt.f]
+        self.history += [res]
         
         return res
 
