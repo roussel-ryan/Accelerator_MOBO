@@ -4,8 +4,11 @@ import matplotlib.pyplot as plt
 import logging
 import time
 
-from .multi_objective import pareto
+import pygmo as pg
+import tensorflow as tf
+
 from .multi_objective import EHVI
+from .multi_objective import UHVI
 
 from . import optimizers
 from . import trackers
@@ -101,74 +104,81 @@ class MultiObjectiveBayesianOptimizer:
 
         self.n_constr          = len(self.constraints)
         self._use_constraints  = 1 if self.n_constr > 0 else 0
-        
-        self.normalize_input   = kwargs.get('norm_input',False)
-        self.normalize_obj     = kwargs.get('norm_obj',False)
-
-        self.n_restarts        = kwargs.get('n_restarts',10)
-        self.optimization_freq = kwargs.get('optimization_freq',-1)
-
-        self.n_refits          = 0
 
         self.logger            = logging.getLogger(__name__)
 
         self.history           = []
+
+        #set infill function
+        infill                 = kwargs.get('infill','UHVI')
+        if infill == 'UHVI':
+            self.infill = UHVI.get_UHVI
+
+        elif infill == 'EHVI':
+            self.infill = EHVI.get_EHVI
+
+        else:
+            raise RuntimeError(f'infill function {self.infill} not found!')
+
+        #add constraints if necessary
+        if not self._use_constraints:
+            self.obj = self.infill
+        else:
+            self.obj = self.constrained_infill
         
-    def fit(self, X, F, C=None):
-        #update observation data
-        if self.normalize_input:
-            X = self._norm_input(X)
+        self.update_objective_data()
+        
+    def update_objective_data(self):
+        data = []
+        for gpr in self.GPRs:
+            data.append(gpr.data[1])
 
-        if self.normalize_obj:
-            F = self._norm_obj(F)
-          
-        self.X = X
-        self.F = F
-        self.C = C
+        self.F = np.array(data).T[0]
+        self.PF = self.get_PF()
+        
+        
+    def add_observations(self, X, Y, C = None):
+        '''add observed data to gaussian process regressors
 
-        tracker = trackers.GPTracker(self.input_dim,len(self.X))
-        #train objective function GPs
+        Parameters
+        ----------
+        X : ndarray, shape (n, input_dim)
+            Observed input points to add
 
+        Y : ndarray, shape (n, output_dim)
+            Observed output points to add
+
+        C : ndarray, shape (n, constraint_dim) , optional
+            Constraint observation data to add
+
+        Returns
+        -------
+        None
+
+        '''
         for i in range(self.obj_dim):
-            self.GPRs[i].data((self.X,self.F[:,i].reshape(-1,1)))
+            #add observed data to GPRs
+            y_data = Y[:,i].reshape(-1,1)
+            gpr = self.GPRs[i]
+            gpr.data = (tf.concat((gpr.data[0],X),axis=0),
+                        tf.concat((gpr.data[1],y_data),axis=0))
 
-            if self.optimization_freq == -1: 
-                self.GPRs[i].optimize_restarts(
-                    num_restarts = self.n_restarts,
-                    max_f_eval = 1000)
-                tracker.stats['optimization'] = True
-                tracker.stats['n_restarts'] = self.n_restarts
-                
-            else:
-                if self.n_refits % self.optimization_freq == 0:
-                    self.GPRs[i].optimize_restarts(
-                        num_restarts = self.n_restarts,
-                        max_f_eval = 1000)
-                    tracker.did_optimization = True
-
-            tracker.models.append(self.GPRs[i].to_dict())
-                    
-        #train constraint function GPs
-        if self._use_constraints:
-            for j in range(self.n_constr):
-                self.constraints[j].fit(X, C[:,j].reshape(-1,1))
-
-        tracker.end()
-
-        self.history.append(tracker)
-        self.n_refits += 1
-            
-    def get_next_point(self, optimizer, return_value = False):
+        self.update_objective_data()
+        #TODO: add constraint data acceptance
+        
+    def get_next_point(self, optimizer_func, return_value = False, **kwargs):
         '''get the point that optimizes TEHVI acq function
 
         Parameters:
         -----------
-        optimizer : BlackBoxOptimizer
-            Instance of BlackBoxOptimizer used to optimize TEHVI.
+        optimizer_func : callable 
+            Function call used to optimize TEHVI.
         
         return_value : bool
             Whether or not to return the function value f(x*)
-        
+
+        **kwargs are used as arguments to optimizer_func
+
         Returns:
         --------
         x* : ndarray, shape (n,)
@@ -179,53 +189,26 @@ class MultiObjectiveBayesianOptimizer:
             if return_value == True
 
         '''
-        if self.verbose and self.input_dim == 2:
-            self.plot_acq()
-
-        if self.obj_dim == 2:
-            self.PF = pareto.get_PF(self.F) 
-            self.PF = pareto.sort_along_first_axis(self.PF)
-
-            if self.normalize_obj:
-                fargs = [self.GPRs,self.PF,
-                         np.ones(self.obj_dim),
-                         np.zeros(self.obj_dim)]
-            else:
-                fargs = [self.GPRs,self.PF,self.B,self.A]
-
-            if self.normalize_input:
-                bounds = np.vstack((np.zeros(self.input_dim),
-                                    np.ones(self.input_dim))).T
-            else:
-                bounds = self.bounds
                 
-            x0 = self.X[-1]
+        #do optimization step to maximize obj (minimize neg_obj)
+        args = [self.GPRs,self.PF,self.A,self.B]
+        def _neg_obj(x, *args):
+            return -1.0 * self.obj(x, *args) 
 
-            if not self._use_constraints:
-                obj = EHVI.get_EHVI
-            else:
-                obj = self._constr_EHVI
+        start = time.time()
+        self.logger.info('Starting acquisition function optimization')
+        res = optimizer_func(self.bounds, _neg_obj, args, **kwargs)
+        self.logger.info(f'Done with optimization in {time.time() - start} s')
 
-            if isinstance(optimizer,optimizers.ParallelLineOpt):
-                #get PF x values as a replacement for x0
-                PF_indicies = pareto.get_PF_indicies(self.F)
-                x0 = self.X[PF_indicies]
-                
-            res = optimizer.minimize(bounds,
-                                     obj,
-                                     args = fargs,
-                                     x0 = x0)
-        #undo normalization
-        if self.normalize_input:
-            res.x = self._denorm_input(res.x)
+        return res
 
-        if self.normalize_obj:
-            res.f = self._denorm_obj(res.f)
-            
-        if return_value:
-            return res.x, res.f
-        else:
-            return res.x
+    def get_PF(self):
+        ndf, dl, dc, ndr = pg.fast_non_dominated_sorting(self.F)
+        return self.F[ndf[0]]
+    
+    def get_hypervolume(self):
+        hv = pg.hypervolume(self.PF)
+        return hv.compute(self.B)
 
     def plot_acq(self,ax = None):
         if ax is None:
@@ -277,11 +260,11 @@ class MultiObjectiveBayesianOptimizer:
 
         
             
-    def _constr_EHVI(self,x,*args):
+    def constrained_infill(self, x, *args):
         cval = np.array([ele.predict(x.reshape(-1,self.input_dim)) for ele in self.constraints])
         constr_val = np.prod(cval)
         self.constraint_vals = cval
-        return EHVI.get_EHVI(x,*args) * constr_val
+        return self.infill(x,*args) * constr_val
 
     def _norm_input(self,X):
         logging.info(self.bounds[:,1].T)

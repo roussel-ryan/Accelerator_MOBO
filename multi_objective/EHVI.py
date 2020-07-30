@@ -3,6 +3,7 @@ np.seterr(divide='ignore',invalid='ignore')
 import scipy
 import logging
 
+from . import pareto
 #p = [mu,sigma,A,B]
 
 def cdf(s):
@@ -44,25 +45,30 @@ def PSI(a,b,p):
                        (a - mu)*cdf(np.divide(A - mu,sigma))))
     return val
 
-def get_EHVI(X,GPRs,S,B,A = None):
+def get_EHVI(X, GPRs, PF, A, B):
     '''
-    x: point input from optimizer
+    x: input points from optimizer, must be 2D
     S: set of sorted, nondominated observed points
     GPRs: list of GP regressors
     r: reference point
     '''
 
+    
     if A is None:
         A = np.zeros(2)
-    
-    dim = len(X)
 
-    f = np.array([ele.predict(X.reshape(-1,dim)) for ele in GPRs]).reshape(2,2).T
-    ehvi = -EHVI_2D(f[0],f[1],S,B,A)
-    #logging.info((f[0],f[1],ehvi))
-    return ehvi
+    if not len(X.shape) == 2:
+        X = np.atleast_2d(X)
+        
+    ehvi = np.empty(len(X))
+    for i in range(len(X)):
+        dim = len(X[i])
+        
+        f = np.array([ele.predict_f(X[i].reshape(-1,dim)) for ele in GPRs]).reshape(2,2).T
+        ehvi[i] = EHVI_2D(f[0], f[1], PF, A, B)
+    return ehvi.reshape(-1,1)
 
-def EHVI_2D(mu,sigma,Y,B,A,verbose = False):
+def EHVI_2D(mu,sigma,Y,A,B,verbose = False):
     #A = kwargs.get('A',np.zeros(2))
     #B = kwargs.get('B',r)
     
@@ -71,7 +77,9 @@ def EHVI_2D(mu,sigma,Y,B,A,verbose = False):
 
     #make sure that the points are sorted along first axis in decending order
     #logging.info(f'f1: {Y.T[0]}')
-    assert np.all(np.diff(Y.T[0]) <= 0)
+
+    if not np.all(np.diff(Y.T[0]) <= 0):
+        Y = pareto.sort_along_first_axis(Y)
     
     #add bounding points to set
     Y = np.vstack(((B[0], A[1]),Y,(A[0],B[1])))

@@ -10,7 +10,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 import gpflow
 
 from GaussianProcessTools import mobo
-from GaussianProcessTools import optimizers
+from GaussianProcessTools.optimizers import evolutionary 
 
 
 def f(x):
@@ -60,12 +60,12 @@ def main():
                                    kernels[i], noise_variance = 0.01)]
     
     #create the optimizer object (in this case a simple grid search)
-    acq_opt = optimizers.GridSearch(20)
+    acq_opt = evolutionary.SwarmOpt(generations = 20)
 
     #create the mutiobjective optimizer
     mobo_opt = mobo.MultiObjectiveBayesianOptimizer(bounds, GPRs,
                                                     B, A = A,
-                                                    infill = 'EHVI')
+                                                    infill = 'UHVI')
 
     n_iterations = 20
     for i in range(n_iterations):
@@ -76,8 +76,8 @@ def main():
         
         #add observations to mobo GPRs
         mobo_opt.add_observations(X_new,Y_new)
-
-
+        print(mobo_opt.get_hypervolume())
+        
     #plot objective space w/ theoretical pf
     fig,ax = plt.subplots()
     ax.plot(*mobo_opt.F.T,'+',label='Samples')
