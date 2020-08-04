@@ -46,15 +46,23 @@ def get_UHVI(X, GPRs, PF, A, B, beta = 0.01):
 
         for j in range(n_obj):
             mu, std = GPRs[j].predict_f(np.atleast_2d(X[i]))
-            uhvi_pt[j] = (mu - beta * std).numpy()
+            uhvi_pt[j] = (mu - beta * np.sqrt(std)).numpy()
 
+        #if the point is smaller than any value of A project onto A axis
+        uhvi_pt = np.where(uhvi_pt > A, uhvi_pt, A)
+            
+        #if the point has any values greater than the ref point B, HVI = 0    
+        if np.any(uhvi_pt > B):
+            uhvi[i] = 0
+
+        else:
+            #add the uhvi_pt to the list of points
+            points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
         
-        #add the uhvi_pt to the list of points
-        points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
-        hv = pg.hypervolume(points)
+            hv = pg.hypervolume(points)
 
-        #calculate the exclusive contribution to the hypervolume from our point
-        uhvi[i] = hv.exclusive(len(points)-1, B)
+            #calculate the exclusive contribution to the hypervolume from our point
+            uhvi[i] = hv.exclusive(len(points)-1, B)
 
     return uhvi
             

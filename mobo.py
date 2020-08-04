@@ -134,6 +134,22 @@ class MultiObjectiveBayesianOptimizer:
             data.append(gpr.data[1])
 
         self.F = np.array(data).T[0]
+
+        #make sure that any points that are outside the n-D domain [A,B] are excluded
+        #from the calculated PF
+        self.temp_F = []
+        for i in range(len(self.F)):
+            #in_obj_domain = (np.all(self.F[i] > self.A) and np.all(self.F[i] < self.B))
+            in_obj_domain = (np.all(self.F[i] < self.B))
+            
+            if not in_obj_domain:
+                warn_string = f'Point {self.F[i]} lies outside objective domain, '
+                warn_string += 'it has been taken out of PF calculations but it still remains in the training set'
+                self.logger.warning(warn_string)
+            else:
+                self.temp_F += [self.F[i]]
+        self.F = np.vstack(self.temp_F)
+        
         self.PF = self.get_PF()
         
         
@@ -145,7 +161,7 @@ class MultiObjectiveBayesianOptimizer:
         X : ndarray, shape (n, input_dim)
             Observed input points to add
 
-        Y : ndarray, shape (n, output_dim)
+        Y : ndarray, shape (n, obj_dim)
             Observed output points to add
 
         C : ndarray, shape (n, constraint_dim) , optional
@@ -156,9 +172,15 @@ class MultiObjectiveBayesianOptimizer:
         None
 
         '''
+        self.logger.debug(f'adding observation(s) X:{X}, Y:{Y}, C:{C}')
+
+        #reshape Y from (n, output_dim) -> (output_dim, n, 1) to properly stack
+        npts = Y.shape[0]
+        Y = Y.reshape(self.obj_dim, npts, 1)
+        
         for i in range(self.obj_dim):
             #add observed data to GPRs
-            y_data = Y[:,i].reshape(-1,1)
+            y_data = Y[i]
             gpr = self.GPRs[i]
             gpr.data = (tf.concat((gpr.data[0],X),axis=0),
                         tf.concat((gpr.data[1],y_data),axis=0))
