@@ -1,0 +1,92 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+import gpflow
+
+from GaussianProcessTools import priors
+from GaussianProcessTools import sobo
+from GaussianProcessTools.optimizers import scipy_opt
+
+def f(x):
+    return x*np.sin(x)
+
+def gprior(x):
+    return np.sin(x)
+
+def bprior(x):
+    return np.sin(x + np.pi/4)
+
+def nprior(x):
+    return 0.0*x
+
+
+def main():
+    data = []
+
+    n = 2
+    bounds = np.array((0,4*np.pi))
+
+    for i in range(10):
+        x0 = np.random.uniform(*bounds,n).reshape(-1,1)
+        subdata = []
+            
+        for ele in [gprior,bprior,nprior]:
+            subdata.append(run(ele,x0,bounds).numpy().flatten())
+
+        data.append(subdata)
+            
+    fig,ax = plt.subplots()
+    for sub in data:
+        for dataset,c in zip(sub,['r','g','b']):
+            ax.plot(dataset,c=c,alpha=0.25)
+        
+
+def run(pri,x0,bounds):
+    x = x0
+    y = f(x)
+
+
+    k = gpflow.kernels.RBF()
+    mean_prior = priors.CustomPrior(pri)
+
+    m = gpflow.models.GPR(data = (x,y),
+                          kernel=k,
+                          mean_function = mean_prior)
+    m.likelihood.variance.assign(1.0e-5)
+
+    s = sobo.SingleObjectiveBayesianOptimizer(bounds,m)
+    
+    opt = scipy_opt.ScalarOpt()
+
+    for i in range(10):
+        res = s.get_next_point(opt.minimize)
+        x_new = np.atleast_2d(res.x)
+        y_new = f(x_new)
+        print((x_new,y_new))
+        
+        s.add_observations(x_new,y_new)
+
+    g = np.linspace(*bounds).reshape(-1,1)
+    p = m.predict_y(g)[0].numpy()
+    sig = np.sqrt(m.predict_y(g)[1].numpy())
+    
+    #fig,ax = plt.subplots()
+    #ax.plot(g,pri(g),label='prior',c='C0')
+    #ax.plot(g,p,label='posterior',c='C1')
+    #ax.fill_between(g.flatten(),(p-sig).flatten(),(p+sig).flatten(),
+    #                lw=0,color='C1',alpha=0.25)
+    
+    #ax.plot(g,f(g),label='ground',c='C2')
+    #ax.plot(*m.data,'+',label='observations',c='C3')
+    #ax.legend()
+    #print(m.data[0])
+
+    return m.data[1]
+    
+main()
+plt.show()    
+
+    
+    

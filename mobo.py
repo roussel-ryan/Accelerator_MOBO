@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 import logging
 import time
@@ -8,8 +9,8 @@ import pygmo as pg
 import tensorflow as tf
 
 from .multi_objective import EHVI
-from .multi_objective import UHVI
 
+from . import infill
 from . import optimizers
 from . import trackers
 
@@ -107,19 +108,11 @@ class MultiObjectiveBayesianOptimizer:
 
         self.logger            = logging.getLogger(__name__)
 
-        self.history           = []
-
-        #set infill function
-        infill                 = kwargs.get('infill','UHVI')
-        if infill == 'UHVI':
-            self.infill = UHVI.get_UHVI
-
-        elif infill == 'EHVI':
-            self.infill = EHVI.get_EHVI
-
-        else:
-            raise RuntimeError(f'infill function {self.infill} not found!')
-
+        
+        #set infill function (defualt UHVI w/ beta = 1.0)
+        self.infill                 = kwargs.get('infill',
+                                                 infill.UHVI(1.0))
+        
         #add constraints if necessary
         if not self._use_constraints:
             self.obj = self.infill
@@ -127,6 +120,8 @@ class MultiObjectiveBayesianOptimizer:
             self.obj = self.constrained_infill
         
         self.update_objective_data()
+
+        self.history = []
         
     def update_objective_data(self):
         data = []
@@ -188,7 +183,7 @@ class MultiObjectiveBayesianOptimizer:
         self.update_objective_data()
         #TODO: add constraint data acceptance
         
-    def get_next_point(self, optimizer_func, return_value = False, **kwargs):
+    def get_next_point(self, optimizer_func, **kwargs):
         '''get the point that optimizes TEHVI acq function
 
         Parameters:
@@ -211,7 +206,9 @@ class MultiObjectiveBayesianOptimizer:
             if return_value == True
 
         '''
-                
+        
+        t               = self.infill.t
+        
         #do optimization step to maximize obj (minimize neg_obj)
         args = [self.GPRs,self.PF,self.A,self.B]
         def _neg_obj(x, *args):
@@ -219,8 +216,33 @@ class MultiObjectiveBayesianOptimizer:
 
         start = time.time()
         self.logger.info('Starting acquisition function optimization')
-        res = optimizer_func(self.bounds, _neg_obj, args, **kwargs)
-        self.logger.info(f'Done with optimization in {time.time() - start} s')
+        self.logger.info(f'UHVI beta {self.infill.get_beta()}')
+
+        res = optimizer_func(self.bounds, _neg_obj, args)
+
+        exec_time = time.time() - start
+        self.logger.info(f'Done with optimization in {exec_time} s')
+
+        stats = pd.DataFrame({'exec_time':exec_time,
+                              'n_obs':len(self.F),
+                              'n_pf':len(self.PF),
+                              'hypervolume':self.get_hypervolume(),
+                              'predicted_ideal_point':[res.x],
+                              'predicted_hypervolume_improvment':np.abs(res.f),
+                              'actual_hypervolume_improvement':np.nan,
+                              'log_marginal_likelihood':[self.get_log_marginal_likelihood()]},
+                             index = [t])
+
+        if isinstance(self.infill,infill.UHVI):
+            stats['beta'] = self.infill.get_beta()
+        
+        if isinstance(self.history,pd.DataFrame):
+            self.history.at[t-1,'actual_hypervolume_improvement'] = stats['hypervolume'] - self.history.at[t-1,'hypervolume'] 
+            self.history = pd.concat([self.history,stats])
+        else:
+            self.history = stats
+        
+        self.infill.t += 1
 
         return res
 
@@ -232,6 +254,10 @@ class MultiObjectiveBayesianOptimizer:
         hv = pg.hypervolume(self.PF)
         return hv.compute(self.B)
 
+    def get_log_marginal_likelihood(self):
+        res = np.array([ele.log_marginal_likelihood().numpy() for ele in self.GPRs])
+        return res
+    
     def plot_acq(self,ax = None):
         if ax is None:
             new_plot = True

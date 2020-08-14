@@ -1,7 +1,7 @@
 import numpy as np
 import pygmo as pg
 
-def get_UHVI(X, GPRs, PF, A, B, beta = 0.01):
+def get_uhvi(X, GPRs, PF, A, B, beta = 1):
     '''computes the UCB Hypervolume improvement
 
     Parameters
@@ -41,12 +41,12 @@ def get_UHVI(X, GPRs, PF, A, B, beta = 0.01):
     uhvi = np.empty(n_pts)
 
     for i in range(n_pts):
-        #using the GPRs, compute the UHVI point f = mu - beta * std
+        #using the GPRs, compute the UHVI point f = mu - np.sqrt(beta * std)
         uhvi_pt = np.empty(n_obj)
 
         for j in range(n_obj):
             mu, std = GPRs[j].predict_f(np.atleast_2d(X[i]))
-            uhvi_pt[j] = (mu - beta * np.sqrt(std)).numpy()
+            uhvi_pt[j] = (mu - np.sqrt(beta * std)).numpy()
 
         #if the point is smaller than any value of A project onto A axis
         uhvi_pt = np.where(uhvi_pt > A, uhvi_pt, A)

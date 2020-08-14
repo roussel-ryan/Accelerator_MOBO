@@ -1,0 +1,52 @@
+import numpy as np
+from .multi_objective import uhvi
+
+
+class Infill:
+    def __init__(self,name):
+        self.name = name
+
+class UHVI(Infill):
+    def __init__(self, beta = None, D = None, delta = None):
+        self.D       = D
+        self.delta   = delta
+
+        self.t       = 1
+
+        super().__init__('uhvi')
+        
+        #if beta is not specified use the beta schedule
+        if beta == None:
+            self.use_schedule = True
+            
+            assert not self.D == None
+            assert not self.delta == None
+
+        else:
+            self.use_schedule = False
+            self.beta = beta
+
+    def __call__(self, X, GPRs, PF, A, B):
+        return uhvi.get_uhvi(X, GPRs, PF, A, B, self.get_beta())
+            
+    def get_beta(self):
+        if self.use_schedule:
+            return 2 * np.log(self.D * self.t**2 * np.pi**2 / (6 * self.delta))
+        else:
+            return self.beta
+
+
+class UCB(Infill):
+    def __init__(self, beta = 0.1):
+
+        self.beta    = beta
+        self.t       = 1
+
+        super().__init__('ucb')
+        
+    def __call__(self, X, GPR):
+        print(X)
+        p = GPR.predict_y(X)
+        return p[0].numpy() + np.sqrt(self.beta * p[1].numpy())
+    
+    

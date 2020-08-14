@@ -1,0 +1,53 @@
+import numpy as np
+import multiprocessing
+from scipy import optimize
+
+from . import base
+
+
+class ScalarOpt(base.BlackBoxOptimizer):
+    '''Fast global optimization with one input and one objective
+
+    '''
+    
+    def __init__(self):
+        pass
+
+    def minimize(self, bounds, func, args = []):
+        return optimize.minimize_scalar(func, bounds = bounds,
+                                        args = args,
+                                        method = 'Bounded')
+
+class GlobalOpt(base.BlackBoxOptimizer):
+    '''Fast global optimization with one input and one objective
+
+    '''
+    
+    def __init__(self, restarts = 25, parallel = False):
+        self.restarts = restarts
+        self.parallel = parallel
+        
+    def minimize(self, bounds, func, args = []):
+        #generate random starting points inside bounds
+        n_start = self.restarts
+        x0_set = np.vstack([np.random.uniform(*b,n_start) for b in bounds]).T
+
+        args_list = []
+        for x0 in x0_set:
+            args_list.append([func,x0,bounds,args])
+
+            
+        if self.parallel:
+            with multiprocessing.Pool(processes = n_start) as pool:
+                results = pool.starmap(self._scipy_min_wrapper,args_list)
+        else:
+            results = []
+            for l in args_list:
+                results += [self._scipy_min_wrapper(*l)]
+
+                
+        fs = np.array([res.fun for res in results])
+        return results[np.argmin(fs)]
+
+    def _scipy_min_wrapper(self,func,x0,bounds,args):
+        return optimize.minimize(func,x0,bounds=bounds,args=args)
