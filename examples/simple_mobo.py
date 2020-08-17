@@ -10,7 +10,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 import gpflow
 
 from GaussianProcessTools import mobo
-from GaussianProcessTools import optimizers
+from GaussianProcessTools.optimizers import grid_search
 
 
 def f(x):
@@ -60,12 +60,11 @@ def main():
                                    kernels[i], noise_variance = 0.01)]
     
     #create the optimizer object (in this case a simple grid search)
-    acq_opt = optimizers.GridSearch(20)
+    acq_opt = grid_search.GridSearch(20)
 
-    #create the mutiobjective optimizer
+    #create the mutiobjective optimizer - default infill = UHVI
     mobo_opt = mobo.MultiObjectiveBayesianOptimizer(bounds, GPRs,
-                                                    B, A = A,
-                                                    infill = 'EHVI')
+                                                    B, A = A)
 
     n_iterations = 20
     for i in range(n_iterations):
