@@ -9,6 +9,7 @@ import pygmo as pg
 import tensorflow as tf
 
 from .multi_objective import EHVI
+from .multi_objective import pareto
 
 from . import infill
 from . import optimizers
@@ -247,9 +248,8 @@ class MultiObjectiveBayesianOptimizer:
         return res
 
     def get_PF(self):
-        ndf, dl, dc, ndr = pg.fast_non_dominated_sorting(self.F)
-        return self.F[ndf[0]]
-    
+        return pareto.get_PF(self.F,self.B,tol = 1e-5)
+        
     def get_hypervolume(self):
         hv = pg.hypervolume(self.PF)
         return hv.compute(self.B)
