@@ -10,6 +10,25 @@ logging.basicConfig(level=logging.INFO)
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+from pygmo import hypervolume
+
+def plot_hypervolume(data,ref):
+    #plot the hypervolume as a function of iteration #,
+    #assume that the points are ordered by iteration #
+
+    n_pts = len(data)
+    HV = []
+    for i in range(1,n_pts+1):
+        hv = hypervolume(data[:i])
+        HV += [hv.compute(ref)]
+
+    fig,ax = plt.subplots()
+    ax.plot(HV)
+    ax.set_ylabel('Hypervolume')
+    ax.set_xlabel('Iteration #')
+    
+    return fig
+        
 
 def plot_1D_GP(X,X_sample,Y_sample,gpr):
     pass

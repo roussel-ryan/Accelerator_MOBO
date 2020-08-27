@@ -19,10 +19,9 @@ def get_PF(data, ref, return_contr = False, tol=1e-8):
         If true get_PF returns the exclusive hypervolume contribution for each point in the pareto set
 
     '''
-    print('using new PF finder')
     
     ndf, dl, dc, ndr = pg.fast_non_dominated_sorting(data)
-    pf_idx = ndf[0]
+    pf_idx = ndf[0].astype(int)
     data = data[pf_idx]
 
     hv    = pg.hypervolume(data)

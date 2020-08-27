@@ -102,10 +102,10 @@ class MultiObjectiveBayesianOptimizer:
         
         self.A            = kwargs.get('A',np.zeros(self.obj_dim))
         self.constraints  = kwargs.get('constraints',[])
+        self.constr_dim   = len(self.constraints)
         self.verbose      = kwargs.get('verbose',False)
 
-        self.n_constr          = len(self.constraints)
-        self._use_constraints  = 1 if self.n_constr > 0 else 0
+        self._use_constraints  = 1 if self.constr_dim > 0 else 0
 
         self.logger            = logging.getLogger(__name__)
 
@@ -116,38 +116,50 @@ class MultiObjectiveBayesianOptimizer:
         
         #add constraints if necessary
         if not self._use_constraints:
+            self.logger.info('Using constraint function')
             self.obj = self.infill
         else:
             self.obj = self.constrained_infill
-        
-        self.update_objective_data()
 
-        self.history = []
-        
-    def update_objective_data(self):
-        data = []
-        for gpr in self.GPRs:
-            data.append(gpr.data[1])
-
-        self.F = np.array(data).T[0]
-
-        #make sure that any points that are outside the n-D domain [A,B] are excluded
-        #from the calculated PF
-        self.temp_F = []
-        for i in range(len(self.F)):
-            #in_obj_domain = (np.all(self.F[i] > self.A) and np.all(self.F[i] < self.B))
-            in_obj_domain = (np.all(self.F[i] < self.B))
             
-            if not in_obj_domain:
-                warn_string = f'Point {self.F[i]} lies outside objective domain, '
-                warn_string += 'it has been taken out of PF calculations but it still remains in the training set'
-                self.logger.warning(warn_string)
-            else:
-                self.temp_F += [self.F[i]]
-        self.F = np.vstack(self.temp_F)
+        #create a pandas dataframe to store info about observations
+        self.update_model_data()
+
+        self.t = 0
+        self.history = []
+
+    def update_model_data(self):
+        #add data from GPRs
+        x_data = self.GPRs[0].data[0].numpy()
+
+        #store the number of observed points in the model
+        self.n_observations = len(x_data)
+
+        y_data = np.hstack([ele.data[1].numpy() for ele in self.GPRs])
         
+        
+        frame_cols = {}
+        for i in range(self.input_dim):
+            frame_cols[f'X{i}'] = x_data.T[i]
+
+        for j in range(self.obj_dim):
+            frame_cols[f'Y{j}'] = y_data.T[j]
+
+        if self._use_constraints:
+            c_data = np.hstack([ele.GPR.data[1].numpy() for ele in self.constraints])
+            
+            for k in range(self.constr_dim):
+                frame_cols[f'C{k}'] = c_data.T[k]
+
+            frame_cols['is_feasable'] = self.get_feasable_labels().astype(bool).tolist()    
+
+        frame_cols['in_target_range'] = self.inside_obj_domain(y_data)
+                                   
+            
+        self.data = pd.DataFrame(frame_cols)
+
         self.PF = self.get_PF()
-        
+
         
     def add_observations(self, X, Y, C = None):
         '''add observed data to gaussian process regressors
@@ -171,8 +183,10 @@ class MultiObjectiveBayesianOptimizer:
         self.logger.debug(f'adding observation(s) X:{X}, Y:{Y}, C:{C}')
 
         #reshape Y from (n, output_dim) -> (output_dim, n, 1) to properly stack
+        #do the same for C
         npts = Y.shape[0]
         Y = Y.reshape(self.obj_dim, npts, 1)
+        C = C.reshape(self.constr_dim, npts, 1)
         
         for i in range(self.obj_dim):
             #add observed data to GPRs
@@ -181,8 +195,11 @@ class MultiObjectiveBayesianOptimizer:
             gpr.data = (tf.concat((gpr.data[0],X),axis=0),
                         tf.concat((gpr.data[1],y_data),axis=0))
 
-        self.update_objective_data()
-        #TODO: add constraint data acceptance
+        for j in range(self.constr_dim):
+            self.constraints[j].add_observations(X,C[j])
+
+        self.update_model_data()
+        self.PF = self.get_PF()
         
     def get_next_point(self, optimizer_func, **kwargs):
         '''get the point that optimizes TEHVI acq function
@@ -208,8 +225,6 @@ class MultiObjectiveBayesianOptimizer:
 
         '''
         
-        t               = self.infill.t
-        
         #do optimization step to maximize obj (minimize neg_obj)
         args = [self.GPRs,self.PF,self.A,self.B]
         def _neg_obj(x, *args):
@@ -225,91 +240,140 @@ class MultiObjectiveBayesianOptimizer:
         self.logger.info(f'Done with optimization in {exec_time} s')
 
         stats = pd.DataFrame({'exec_time':exec_time,
-                              'n_obs':len(self.F),
+                              'n_obs':self.n_observations,
+                              'n_iterations' : self.t,
                               'n_pf':len(self.PF),
                               'hypervolume':self.get_hypervolume(),
                               'predicted_ideal_point':[res.x],
                               'predicted_hypervolume_improvment':np.abs(res.f),
                               'actual_hypervolume_improvement':np.nan,
                               'log_marginal_likelihood':[self.get_log_marginal_likelihood()]},
-                             index = [t])
+                             index = [self.t])
 
         if isinstance(self.infill,infill.UHVI):
             stats['beta'] = self.infill.get_beta()
         
         if isinstance(self.history,pd.DataFrame):
-            self.history.at[t-1,'actual_hypervolume_improvement'] = stats['hypervolume'] - self.history.at[t-1,'hypervolume'] 
+            self.history.at[self.t-1,'actual_hypervolume_improvement'] = stats['hypervolume'] - self.history.at[self.t-1,'hypervolume'] 
             self.history = pd.concat([self.history,stats])
         else:
             self.history = stats
-        
-        self.infill.t += 1
+
+        self.t += 1
 
         return res
 
+    def get_feasable(self,invert = False):
+        if invert:
+            return self.data[~(self.data['is_feasable'] & self.data['in_target_range'])]
+        else:
+            return self.data[self.data['is_feasable'] & self.data['in_target_range']]
+        
+    def get_feasable_Y(self, invert = False):
+        return self.get_feasable(invert).filter(regex='^Y',axis=1).to_numpy()
+
+    def get_feasable_X(self, invert = False):
+        return self.get_feasable(invert).filter(regex='^X',axis=1).to_numpy()
+    
+
+    
     def get_PF(self):
-        return pareto.get_PF(self.F,self.B,tol = 1e-5)
+        F = self.get_feasable_Y()
+        return pareto.get_PF(F, self.B, tol = 1e-5)
         
     def get_hypervolume(self):
-        hv = pg.hypervolume(self.PF)
+        hv = pg.hypervolume(self.get_PF())
         return hv.compute(self.B)
 
     def get_log_marginal_likelihood(self):
         res = np.array([ele.log_marginal_likelihood().numpy() for ele in self.GPRs])
         return res
-    
-    def plot_acq(self,ax = None):
-        if ax is None:
-            new_plot = True
-        
-        if new_plot:
-            fig,ax = plt.subplots(self.obj_dim + 1,1)
+
+    def get_feasable_labels(self):
+        if self._use_constraints:
+            b = []
+            for const in self.constraints:
+                b += [const.get_feasable()]
+
+            b = np.array(b)
+            b = np.prod(b,axis=0)
         else:
-            fig,ax = plt.subplots()
+            b = np.ones(self.n_observations)
+            
+        return b
+        
+    def get_feasable_idx(self):
+        return np.argwhere(self.get_feasable_labels()).flatten()
 
-        self.PF = pareto.get_PF(self.F) 
-        self.PF = pareto.sort_along_first_axis(self.PF)
+    def inside_obj_domain(self,F):
+        return (np.all(F > self.A) and np.all(F < self.B))
 
-        fargs = [self.GPRs,self.PF,self.B,self.A]    
+    
+    def plot_acq(self, ax = None):
+        if ax is None:
+            fig, ax = plt.subplots()
 
-        n = 20
+        self.PF = self.get_PF()
+        fargs = [self.GPRs,self.PF,self.A,self.B]    
+
+        n = 30
         x = np.linspace(*self.bounds[0,:],n)
         y = np.linspace(*self.bounds[1,:],n)
         xx, yy = np.meshgrid(x,y)
         pts = np.vstack((xx.ravel(),yy.ravel())).T
 
         f = []
-        for i in range(n**2):
-            if not self._use_constraints:
-                f.append(EHVI.get_EHVI(pts[i],*fargs))
-            else:
-                f.append(self._constr_EHVI(pts[i],*fargs))
-        f = np.array(f).reshape(n,n)
+        for pt in pts:
+            f += [self.obj(pt,*fargs)]
 
-        if new_plot:
-            #plot all of the obj function predictions
-            for j in range(self.obj_dim):
-                c = ax[j].pcolor(xx,
-                                 yy,
-                                 self.GPRs[j].predict(pts)[0].reshape(n,n))
-                ax[j].figure.colorbar(c,ax=ax[j])
-                
-            c = ax[self.obj_dim].pcolor(xx,yy,f)
-            ax[self.obj_dim].figure.colorbar(c,
-                                             ax= ax[self.obj_dim])
-            for a in ax:
-                a.plot(*self.X.T,'r+')
-                
-                
-            fig.suptitle(f'MOBO problem step {len(self.X)}')
-        else:
-            c = ax.pcolor(xx,yy,f)
-            ax.figure.colorbar(c,ax=ax)          
+        f = np.array(f).reshape(n,n)
+        
+        c = ax.pcolor(xx,yy,f)
+        ax.figure.colorbar(c,ax=ax)          
+
+        ax.plot(*self.GPRs[0].data[0].numpy().T,'+')
+        ax.set_xlabel('$x_1$')
+        ax.set_ylabel('$x_2$')
+        
+        return ax
+
+    def plot_constr(self, ax = None):
+        if ax is None:
+            fig, ax = plt.subplots()
+        
+        fargs = [self.GPRs,self.PF,self.A,self.B]    
+
+        n = 30
+        x = np.linspace(*self.bounds[0,:],n)
+        y = np.linspace(*self.bounds[1,:],n)
+        xx, yy = np.meshgrid(x,y)
+        pts = np.vstack((xx.ravel(),yy.ravel())).T
+
+        f = []
+        for pt in pts:
+            f += [self.constraints[0].predict(np.atleast_2d(pt))]
+
+        f = np.array(f).reshape(n,n)
+        
+        c = ax.pcolor(xx,yy,f)
+        ax.figure.colorbar(c,ax=ax)          
+
+        X_feas = self.get_feasable_X()
+        X_nonfeas = self.get_feasable_X(invert = True)
+        
+        ax.plot(*X_feas.T,'+r')
+        ax.plot(*X_nonfeas.T, 'or')
+
+        ax.set_xlabel('$x_1$')
+        ax.set_ylabel('$x_2$')
+        
+        return ax
 
         
             
     def constrained_infill(self, x, *args):
-        cval = np.array([ele.predict(x.reshape(-1,self.input_dim)) for ele in self.constraints])
+        cval = np.array([ele.predict(
+            x.reshape(-1,self.input_dim)) for ele in self.constraints])
         constr_val = np.prod(cval)
         self.constraint_vals = cval
         return self.infill(x,*args) * constr_val
@@ -335,4 +399,37 @@ class MultiObjectiveBayesianOptimizer:
 
     
 
+    '''    
+    def update_objective_data(self):
+        data = []
+        for gpr in self.GPRs:
+            data.append(gpr.data[1])
+
+        self.F = np.array(data).T[0]
+
+        #make sure that any points that are outside the n-D domain [A,B] are excluded
+        #from the calculated PF
+        self.temp_F = []
+        for i in range(len(self.F)):
+            in_obj_domain = (np.all(self.F[i] > self.A) and np.all(self.F[i] < self.B))
+            #in_obj_domain = (np.all(self.F[i] < self.B))
+            
+            if not in_obj_domain:
+                warn_string = f'Point {self.F[i]} lies outside objective domain, '
+                warn_string += 'it has been taken out of PF calculations but it still remains in the training set'
+                self.logger.warning(warn_string)
+            else:
+                self.temp_F += [self.F[i]]
+        self.F = np.vstack(self.temp_F)
+
+        logging.debug(self.F)
+        
+        #make sure that we only use points that satisfy the constraint(s)
+        if self._use_constraints:
+            f_idx = self.get_feasable_idx()
+            self.F = self.F[f_idx]
+            
+        logging.debug(self.F)
+        self.PF = self.get_PF()
+    ''' 
         

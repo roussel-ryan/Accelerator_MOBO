@@ -14,6 +14,7 @@ from GaussianProcessTools import mobo
 from GaussianProcessTools.optimizers import grid_search
 from GaussianProcessTools import infill
 from GaussianProcessTools import plotting
+from GaussianProcessTools.optimizers import evolutionary 
 
 def f(x):
     f1 = np.linalg.norm(x - np.array((1,1)))
@@ -61,8 +62,10 @@ def main():
         GPRs += [gpflow.models.GPR((X,Y[:,i].reshape(-1,1)),
                                    kernels[i], noise_variance = 0.0001)]
     
-    #create the optimizer object (in this case a simple grid search)
-    acq_opt = grid_search.GridSearch(20)
+    #create the optimizer object (in this case swarm search)
+    swarm_opt = evolutionary.SwarmOpt(generations = 20,
+                                      population = 64)
+
     acq = infill.UHVI(beta = 0.01)
     
     #create the mutiobjective optimizer - default infill = UHVI
@@ -73,7 +76,7 @@ def main():
     n_iterations = 30
     for i in range(n_iterations):
         #find next point for observation
-        result = mobo_opt.get_next_point(acq_opt.minimize)
+        result = mobo_opt.get_next_point(swarm_opt.minimize)
         X_new = np.atleast_2d(result.x)
         Y_new = f(X_new)
         
