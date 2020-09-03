@@ -80,7 +80,7 @@ def main():
     swarm_opt = evolutionary.SwarmOpt(generations = 10,
                                       population = 32)
 
-    acq = infill.UHVI(beta = 0.01)
+    acq = infill.UHVI(beta = 0.01, approx = True)
 
     #add constraint x[0] < 0.5 
     xmax = 0.5

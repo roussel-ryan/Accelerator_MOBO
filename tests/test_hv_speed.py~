@@ -1,0 +1,42 @@
+import numpy as np
+import pygmo as pg
+from pygmo import hypervolume
+
+import timeit
+
+def main():
+    n_cycles = 100
+    print(timeit.timeit(run, number = n_cycles)/n_cycles)
+    print(timeit.timeit(run_fpras, number = n_cycles)/n_cycles)
+
+def gen():
+    dim = 10
+    npts = 100
+    
+    pts = np.random.uniform(0,1,(npts,dim))
+
+def run():
+    dim = 10
+    npts = 100
+    
+    pts = np.random.uniform(0,1,(npts,dim))
+    ref = np.ones(dim)
+    
+    hv = hypervolume(pts)
+    hv.compute(ref)
+
+    
+def run_fpras():
+    dim = 10
+    npts = 100
+    
+    pts = np.random.uniform(0,1,(npts,dim))
+    ref = np.ones(dim)
+
+    fpras = pg.bf_fpras(eps=0.1, delta=0.1)
+    
+    hv = hypervolume(pts)
+    hv.compute(ref, hv_algo=fpras)
+
+main()
+    

@@ -1,0 +1,53 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+#suppress output messages below "ERROR" from tensorflow
+#and prevent the use of any system GPU's
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = '-1'
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
+
+import pygmo as pg
+
+
+class MyProblem:
+    def fitness(self, x):
+        return [np.linalg.norm(x - np.array((1,1))),
+                np.linalg.norm(x + np.array((1,1)))]
+
+    def get_bounds(self):
+        return ([-2,-2],[2,2])
+
+    def get_nobj(self):
+        return 2
+    
+def main():
+    '''benchmark comparsion between MOBO and massively parallel optimization algorithms
+    
+    '''
+
+    ref = np.array((5,5))
+    prob = pg.problem(MyProblem())
+
+    #prob = pg.zdt(param = 2)
+    algo = pg.algorithm(pg.nspso(gen = 40))
+    algo = pg.algorithm(pg.nsga2(gen = 10))
+
+    fig2,ax2 = plt.subplots()
+    npop = 20
+    pop = pg.population(prob,npop)
+    pop = algo.evolve(pop)
+
+    hv = pg.hypervolume(pop)
+    print(hv.compute(ref))
+    
+    fits, vectors = pop.get_f(), pop.get_x()
+        
+    fig,ax = plt.subplots()
+    ax.plot(*fits.T,'+')
+    ax.plot((2*np.sqrt(2),0),(0,2*np.sqrt(2)))
+    
+if __name__=='__main__':
+    main()
+    plt.show()

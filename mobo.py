@@ -115,15 +115,16 @@ class MultiObjectiveBayesianOptimizer:
                                                  infill.UHVI(1.0))
         
         #add constraints if necessary
-        if not self._use_constraints:
+        if self._use_constraints:
             self.logger.info('Using constraint function')
-            self.obj = self.infill
-        else:
             self.obj = self.constrained_infill
+        else:
+            self.obj = self.infill
 
             
         #create a pandas dataframe to store info about observations
         self.update_model_data()
+        self.PF = self.get_PF()
 
         self.t = 0
         self.history = []
@@ -147,18 +148,17 @@ class MultiObjectiveBayesianOptimizer:
 
         if self._use_constraints:
             c_data = np.hstack([ele.GPR.data[1].numpy() for ele in self.constraints])
-            
             for k in range(self.constr_dim):
                 frame_cols[f'C{k}'] = c_data.T[k]
-
             frame_cols['is_feasable'] = self.get_feasable_labels().astype(bool).tolist()    
 
+        else:
+            frame_cols['is_feasable'] = [True] * self.n_observations
+            
         frame_cols['in_target_range'] = self.inside_obj_domain(y_data)
                                    
             
         self.data = pd.DataFrame(frame_cols)
-
-        self.PF = self.get_PF()
 
         
     def add_observations(self, X, Y, C = None):
@@ -186,7 +186,7 @@ class MultiObjectiveBayesianOptimizer:
         #do the same for C
         npts = Y.shape[0]
         Y = Y.reshape(self.obj_dim, npts, 1)
-        C = C.reshape(self.constr_dim, npts, 1)
+    
         
         for i in range(self.obj_dim):
             #add observed data to GPRs
@@ -195,10 +195,15 @@ class MultiObjectiveBayesianOptimizer:
             gpr.data = (tf.concat((gpr.data[0],X),axis=0),
                         tf.concat((gpr.data[1],y_data),axis=0))
 
-        for j in range(self.constr_dim):
-            self.constraints[j].add_observations(X,C[j])
+        if self._use_constraints:
+            C = C.reshape(self.constr_dim, npts, 1)
+    
+            for j in range(self.constr_dim):
+                self.constraints[j].add_observations(X,C[j])
 
         self.update_model_data()
+        self.logger.info(f'\n{self.data}')
+
         self.PF = self.get_PF()
         
     def get_next_point(self, optimizer_func, **kwargs):
@@ -235,10 +240,11 @@ class MultiObjectiveBayesianOptimizer:
         self.logger.info(f'UHVI beta {self.infill.get_beta()}')
 
         res = optimizer_func(self.bounds, _neg_obj, args)
-
         exec_time = time.time() - start
         self.logger.info(f'Done with optimization in {exec_time} s')
-
+        self.logger.info(f'Avg UHVI calc time {self.infill.get_avg_time()} s')
+        self.infill.reset_timer()
+        
         stats = pd.DataFrame({'exec_time':exec_time,
                               'n_obs':self.n_observations,
                               'n_iterations' : self.t,
@@ -263,19 +269,19 @@ class MultiObjectiveBayesianOptimizer:
 
         return res
 
+    
     def get_feasable(self,invert = False):
         if invert:
             return self.data[~(self.data['is_feasable'] & self.data['in_target_range'])]
         else:
             return self.data[self.data['is_feasable'] & self.data['in_target_range']]
+
         
     def get_feasable_Y(self, invert = False):
         return self.get_feasable(invert).filter(regex='^Y',axis=1).to_numpy()
 
     def get_feasable_X(self, invert = False):
-        return self.get_feasable(invert).filter(regex='^X',axis=1).to_numpy()
-    
-
+        return self.get_feasable(invert).filter(regex='^X',axis=1).to_numpy()    
     
     def get_PF(self):
         F = self.get_feasable_Y()
@@ -306,7 +312,8 @@ class MultiObjectiveBayesianOptimizer:
         return np.argwhere(self.get_feasable_labels()).flatten()
 
     def inside_obj_domain(self,F):
-        return (np.all(F > self.A) and np.all(F < self.B))
+        return [np.all(ele > self.A) and np.all(ele < self.B) for ele in F]
+        #return (np.all(F > self.A) and np.all(F < self.B))
 
     
     def plot_acq(self, ax = None):
