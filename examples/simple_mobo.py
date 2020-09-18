@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+plt.style.use('PRAB_style.mplstyle')
+
 #suppress output messages below "ERROR" from tensorflow
 #and prevent the use of any system GPU's
 import os
@@ -13,7 +15,7 @@ import gpflow
 from GaussianProcessTools import mobo
 from GaussianProcessTools.optimizers import grid_search
 from GaussianProcessTools import infill
-from GaussianProcessTools import plotting
+from GaussianProcessTools.multi_objective import plotting
 
 def f(x):
     f1 = np.linalg.norm(x - np.array((1,1)))
@@ -41,7 +43,7 @@ def main():
     bounds = np.array(((-2,2),(-2,2)))
 
     #sample the objective functions
-    n_initial = 2
+    n_initial = 5
     X0 = np.random.uniform(*bounds[0],size = (n_initial,2))
     Y0 = np.vstack([f(ele) for ele in X0])
 
@@ -53,7 +55,7 @@ def main():
     B = np.ones(2) * 5.0
 
     #define kernels to be used for the gaussian process regressors
-    kernels = [gpflow.kernels.RBF(lengthscales = 0.5, variance = 0.5) for i in [0,1]]
+    kernels = [gpflow.kernels.RBF(lengthscales = 1.0, variance = 0.5) for i in [0,1]]
 
     #define GP models
     GPRs = []
@@ -70,7 +72,7 @@ def main():
                                                     B, A = A,
                                                     infill = acq)
 
-    n_iterations = 30
+    n_iterations = 1
     for i in range(n_iterations):
         #find next point for observation
         result = mobo_opt.get_next_point(acq_opt.minimize)
@@ -83,18 +85,23 @@ def main():
 
     #plot objective space w/ theoretical pf, inculde colors to show iteration #
     fig,ax = plt.subplots()
-    colors = np.arange(len(mobo_opt.F.T[0]))
+    colors = np.arange(len(mobo_opt.get_data('Y').T[0]))
     
-    cax = ax.scatter(*mobo_opt.F.T,c = colors,label='Samples')
+    cax = ax.scatter(*mobo_opt.get_data('Y').T,c = colors,label='Samples')
     ax.plot((2*np.sqrt(2),0),(0,2*np.sqrt(2)))
     fig.colorbar(cax)
 
     #plot the hypervolume as a function of iteration #
-    fig2 = plotting.plot_hypervolume(mobo_opt.F,B)
+    fig2, ax2 = plt.subplots()
+    ax2.plot(mobo_opt.history['hypervolume'])
 
     #add a line where the theoretical HV max would be
     HV_max = np.product(B) - 0.5 * 8
     fig2.axes[0].axhline(HV_max)
+
+    #fig3, ax3 = plt.subplots()
+    plotting.plot_full(mobo_opt, f)
+
     
 if __name__=='__main__':
     main()

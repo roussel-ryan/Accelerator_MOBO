@@ -23,7 +23,7 @@ def create_gp_dataframe(self):
         c_data = np.hstack([ele.GPR.data[1].numpy() for ele in self.constraints])
         for k in range(self.constr_dim):
             frame_cols[f'C{k}'] = c_data.T[k]
-        frame_cols['is_feasable'] = get_feasable_labels().astype(bool).tolist()    
+        frame_cols['is_feasable'] = get_feasable_labels(self).astype(bool).tolist()    
 
     else:
         frame_cols['is_feasable'] = [True] * self.n_observations
@@ -55,7 +55,7 @@ def inside_obj_domain(self,F):
     return [np.all(ele > self.A) and np.all(ele < self.B) for ele in F]
     
 
-def get_data(self, name = 'all', feas = None):
+def get_data(self, name = 'all', feas = None, convert = True):
     '''
     get subset of data from dataframe
 
@@ -77,10 +77,14 @@ def get_data(self, name = 'all', feas = None):
         df = get_feasable(self,invert = True)
 
     if name == 'all':
+        pass
+    else:
+        df = df.filter(regex = f'^{name}',axis=1)
+
+    if convert:
         return df.to_numpy()
     else:
-        return df.filter(regex = f'^{name}',axis=1).to_numpy()
-    
+        return df
     
         
 def get_feasable(self,invert = False):

@@ -3,6 +3,7 @@ import pandas as pd
 
 import logging
 import time
+import pickle
 
 import pygmo as pg
 import tensorflow as tf
@@ -220,6 +221,7 @@ class MultiObjectiveBayesianOptimizer:
         stats = pd.DataFrame({'exec_time':exec_time,
                               'n_obs':self.n_observations,
                               'n_iterations' : self.t,
+                              'n_valid' : len(self.get_data('X',valid=True)),
                               'n_pf':len(self.PF),
                               'hypervolume':self.get_hypervolume(),
                               'predicted_ideal_point':[res.x],
@@ -242,9 +244,11 @@ class MultiObjectiveBayesianOptimizer:
 
         return res
 
+    def save(self, fname):
+        pickle.dump(self,open(fname,'wb'))
     
-    def get_data(self, name = 'all', valid = None):
-        return utils.get_data(self, name, valid)
+    def get_data(self, name = 'all', valid = None, convert = True):
+        return utils.get_data(self, name, valid, convert)
     
     def get_PF(self):
         F = self.get_data('Y', valid = True)
@@ -258,11 +262,11 @@ class MultiObjectiveBayesianOptimizer:
         res = np.array([ele.log_marginal_likelihood().numpy() for ele in self.GPRs])
         return res
 
-    def plot_acq(self,ax):
-        return plotting.plot_acq(self,ax)
+    def plot_acq(self,ax = None, **kwargs):
+        return plotting.plot_acq(self,ax, **kwargs)
 
-    def plot_constr(self,ax):
-        return plotting.plot_constr(self,ax)
+    def plot_constr(self,ax = None,**kwargs):
+        return plotting.plot_constr(self,ax,**kwargs)
 
     def constrained_infill(self, x, *args):
         cval = np.array([ele.predict(

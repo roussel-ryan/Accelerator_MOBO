@@ -95,7 +95,7 @@ def main():
                                                     B, A = A,
                                                     constraints = [constr],
                                                     infill = acq)
-    n_iterations = 50
+    n_iterations = 1
     for i in range(n_iterations):
         #find next point for observation
         result = mobo_opt.get_next_point(swarm_opt.minimize)
@@ -110,13 +110,13 @@ def main():
     mobo_opt.plot_constr()
 
     #plot objective space w/ theoretical pf, inculde colors to show iteration #
-    fig,ax = plt.subplots()
-    F = mobo_opt.get_feasable_Y()
+    #fig,ax = plt.subplots()
+    #F = mobo_opt.get_feasable_Y()
 
-    colors = mobo_opt.get_feasable().index
-    cax = ax.scatter(*F.T, c = colors, label='Samples')
-    ax.plot((2*np.sqrt(2),0),(0,2*np.sqrt(2)))
-    fig.colorbar(cax)
+    #colors = mobo_opt.get_data().index
+    #cax = ax.scatter(*F.T, c = colors, label='Samples')
+    #ax.plot((2*np.sqrt(2),0),(0,2*np.sqrt(2)))
+    #fig.colorbar(cax)
 
     
 if __name__=='__main__':
