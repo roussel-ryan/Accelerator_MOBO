@@ -127,6 +127,7 @@ class MultiObjectiveBayesianOptimizer:
             
         #create a pandas dataframe to store info about observations
         self.update_model_data()
+        self.logger.info(self.data)
         self.PF = self.get_PF()
 
         self.t = 0
@@ -210,19 +211,25 @@ class MultiObjectiveBayesianOptimizer:
 
         start = time.time()
         self.logger.info('Starting acquisition function optimization')
-        self.logger.info(f'UHVI beta {self.infill.get_beta()}')
+        #self.logger.info(f'UHVI beta {self.infill.get_beta()}')
 
         res = optimizer_func(self.bounds, _neg_obj, args)
         exec_time = time.time() - start
         self.logger.info(f'Done with optimization in {exec_time} s')
-        self.logger.info(f'Avg UHVI calc time {self.infill.get_avg_time()} s')
-        self.infill.reset_timer()
+        #self.logger.info(f'Avg UHVI calc time {self.infill.get_avg_time()} s')
+        #self.infill.reset_timer()
+
+        #measure distance travelled in input space
+        x0 = self.GPRs[0].data[0][-1]
+        dist = np.linalg.norm(res.x - x0)
+
         
         stats = pd.DataFrame({'exec_time':exec_time,
                               'n_obs':self.n_observations,
                               'n_iterations' : self.t,
                               'n_valid' : len(self.get_data('X',valid=True)),
                               'n_pf':len(self.PF),
+                              'dist':dist,
                               'hypervolume':self.get_hypervolume(),
                               'predicted_ideal_point':[res.x],
                               'predicted_hypervolume_improvment':np.abs(res.f),
@@ -232,7 +239,7 @@ class MultiObjectiveBayesianOptimizer:
 
         if isinstance(self.infill,infill.UHVI):
             stats['beta'] = self.infill.get_beta()
-        
+            
         if isinstance(self.history,pd.DataFrame):
             a = stats['hypervolume'] - self.history.at[self.t-1,'hypervolume'] 
             self.history.at[self.t-1,'actual_hypervolume_improvement'] = a

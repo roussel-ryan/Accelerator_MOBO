@@ -1,19 +1,45 @@
 import numpy as np
+from scipy.stats import multivariate_normal
 from .multi_objective import uhvi
-
+from .multi_objective import biuhvi
 import time
 
 class Infill:
     def __init__(self,name):
         self.name = name
 
+
+class Restricted_UHVI(Infill):
+    def __init__(self, **kwargs):
+
+        self.uhvi = UHVI(**kwargs)
+        print(self.uhvi.beta)
+        
+    def __call__(self, X, GPRs, PF, A, B):
+        #get last point
+    
+        x0 = GPRs[0].data[0][-1]
+        #print(x0)
+        #print(np.linalg.norm(X - x0))        
+
+        alpha0 = self.uhvi(X, GPRs, PF, A, B)
+        
+        return alpha0 * multivariate_normal.pdf(X, mean = x0, cov = 0.25)
+        #return alpha0
+        #if np.linalg.norm(X - x0) < 1.5:
+            #print(self.uhvi(X, GPRs, PF, A, B))
+        #    return self.uhvi(X, GPRs, PF, A, B)
+        #else:
+        #    return np.array([0.0])
+
+        
 class UHVI(Infill):
-    def __init__(self, beta = None, D = None, delta = None, approx = False):
+    def __init__(self, beta = None, D = None, delta = None, approx = False, use_bi = False):
         self.D       = D
         self.delta   = delta
         self.approx  = approx
         self.t       = 1
-
+        self.use_bi  = use_bi 
         self.eval_time = []
         
         super().__init__('uhvi')
@@ -34,6 +60,9 @@ class UHVI(Infill):
         if self.approx:
             res = uhvi.get_approx_uhvi(X, GPRs, PF, A, B, self.get_beta())
         else:
+            #if self.use_bi:
+            #    res = biuhvi.get_biuhvi(X, GPRs, PF, A, B, self.get_beta())
+            #else:
             res = uhvi.get_uhvi(X, GPRs, PF, A, B, self.get_beta())
         self.eval_time += [time.time() - start]
         return res

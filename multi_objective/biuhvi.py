@@ -3,8 +3,10 @@ import pygmo as pg
 
 import time
 
-def get_uhvi(X, GPRs, PF, A, B, beta = 0.01):
-    '''computes the UCB Hypervolume improvement
+def get_biuhvi(X, GPRs, PF, A, B, beta = 0.01):
+    '''computes the BUCB Hypervolume improvement
+
+    BUHVI - bidirectional upper confidence hypervolume improvement
 
     Parameters
     ----------
@@ -49,24 +51,45 @@ def get_uhvi(X, GPRs, PF, A, B, beta = 0.01):
         for j in range(n_obj):
             mu, std = GPRs[j].predict_f(np.atleast_2d(X[i]))
             uhvi_pt[j] = (mu - np.sqrt(beta * std)).numpy()
-                    
+
+            
         #if the point is smaller than any value of A project onto A axis
-        uhvi_pt = np.where(uhvi_pt > A, uhvi_pt, A)
 
-        #check if point is dominated or if it is outside of ref point
-        if is_dominated(uhvi_pt, PF) or np.any(uhvi_pt > B):
-            uhvi[i] = 0
-
-        else:
-            #add the uhvi_pt to the list of points
-            points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
-        
-            hv = pg.hypervolume(points)
-
-            #calculate the exclusive contribution to the hypervolume from our point
-            uhvi[i] = hv.exclusive(len(points)-1, B)
-
+        uhvi[i] = calculate_biuhvi(uhvi_pt,PF,A,B)
+    
     return uhvi
+
+def calculate_biuhvi(uhvi_pt,PF,A,B):
+    uhvi_pt = np.where(uhvi_pt > A, uhvi_pt, A)
+
+    #check if point is dominated or if it is outside of ref point
+    if np.any(uhvi_pt > B):
+        return 0
+            
+    elif is_dominated(uhvi_pt, PF) :
+        #calculate negative HVI by mirroring PF across y=-x
+        mPF = -PF
+        muhvi_pt = -uhvi_pt
+        mA = -A
+        mB = -B
+
+        muhvi_pt = np.where(muhvi_pt > mB, muhvi_pt,mB)
+        
+        points = np.vstack((mPF,np.atleast_2d(muhvi_pt)))
+        hv = pg.hypervolume(points)
+            
+        return -1*hv.exclusive(len(points)-1,mA)
+
+        #return 0
+    else:
+        #add the uhvi_pt to the list of points
+        points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
+        
+        hv = pg.hypervolume(points)
+
+        #calculate the exclusive contribution to the hypervolume from our point
+        return hv.exclusive(len(points)-1, B)
+
 
 def get_approx_uhvi(X, GPRs, PF, A, B, beta = 1):
     '''computes the Approximate UCB Hypervolume improvement using 

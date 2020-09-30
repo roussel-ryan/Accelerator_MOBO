@@ -52,7 +52,7 @@ def get_feasable_idx(self):
     return np.argwhere(self.get_feasable_labels()).flatten()
 
 def inside_obj_domain(self,F):
-    return [np.all(ele > self.A) and np.all(ele < self.B) for ele in F]
+    return [np.all(ele >= self.A) and np.all(ele <= self.B) for ele in F]
     
 
 def get_data(self, name = 'all', feas = None, convert = True):

@@ -26,6 +26,9 @@ class GridSearch(base.BlackBoxOptimizer):
         #print(pts)
         
         #eval the function at each pt
-        val = func(pts,*args)
+        val = []
+        for pt in pts:
+            val += [func(pt,*args)]
+        val = np.array(val)
 
         return base.Result(pts[np.argmin(val)],np.min(val))

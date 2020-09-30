@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
+from matplotlib.patches import Polygon
 
 from . import pareto
 
@@ -60,7 +61,7 @@ def plot_full(self, f_ground = None, n = 20):
     for ax, fun in zip(faxes,funcs):
         fun = np.array(fun).reshape(n,n)
     
-        c = ax.pcolor(xx,yy,fun/np.max(fun),cmap = 'cividis')
+        c = ax.pcolor(xx,yy,fun/(np.max(fun) - np.min(fun)),cmap = 'cividis')
         #ax.figure.colorbar(c,ax=ax)          
 
     for ax in faxes[:2]:
@@ -123,7 +124,7 @@ def plot_acq(self, ax = None, **kwargs):
 
     f = np.array(f).reshape(n,n)
     
-    c = ax.pcolor(xx,yy,f)
+    c = ax.pcolor(xx,yy,f,cmap='cividis')
     ax.figure.colorbar(c,ax=ax)          
     
     ax.plot(*self.get_data('X').T,'+')
