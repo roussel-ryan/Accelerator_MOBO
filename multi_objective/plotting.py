@@ -7,7 +7,7 @@ from . import pareto
 
 #plt.style.use('PRAB_style.mplstyle')
 
-def plot_full(self, f_ground = None, n = 20):
+def plot_full(model, f_ground = None, n = 20):
 
     mpl.rcParams['font.size'] = 8
     mpl.rcParams['axes.labelpad'] = 0.0
@@ -25,28 +25,28 @@ def plot_full(self, f_ground = None, n = 20):
     fig, axes = plt.subplots(2 + add,2)
     fig.set_size_inches(3.75,4)
     
-    assert self.input_dim == 2
+    assert model.input_dim == 2
         
-    self.PF = self.get_PF()
-    fargs = [self.GPRs,self.PF,self.A,self.B]    
+    PF = model.get_PF()
+    fargs = [model]    
 
     
-    x = np.linspace(*self.bounds[0,:],n)
-    y = np.linspace(*self.bounds[1,:],n)
+    x = np.linspace(*model.bounds[0,:],n)
+    y = np.linspace(*model.bounds[1,:],n)
     xx, yy = np.meshgrid(x,y)
     pts = np.vstack((xx.ravel(),yy.ravel())).T
 
     g = []
     f_gnd = []
     for pt in pts:
-        g += [self.obj(pt,*fargs)]
+        g += [model.obj(pt,*fargs)]
         if add:
             f_gnd += [f_ground(pt)]
 
     f_gnd = np.array(f_gnd)
             
-    f1 = self.GPRs[0].predict_y(pts)[0]
-    f2 = self.GPRs[1].predict_y(pts)[0]
+    f1 = model.GPRs[0].predict_y(pts)[0]
+    f2 = model.GPRs[1].predict_y(pts)[0]
 
 
     
@@ -68,7 +68,7 @@ def plot_full(self, f_ground = None, n = 20):
         ax.plot((-1,1),(-1,1),c='C2')
         
     for ax in faxes[2:]:
-        ax.plot(*self.get_data('X').T,'r.')
+        ax.plot(*model.get_data('X').T,'r.')
         #ax.set_yticks([])
         #ax.set_xticks([])
         
@@ -78,7 +78,7 @@ def plot_full(self, f_ground = None, n = 20):
     axes[-1,0].set_xticks([-2,0,2])
         
     obj_ax = axes[add + 1,1]
-    obj_ax.plot(*self.get_data('Y').T,'r.',label='Samples')
+    obj_ax.plot(*model.get_data('Y').T,'r.',label='Samples')
     obj_ax.plot((2*np.sqrt(2),0),(0,2*np.sqrt(2)))
     obj_ax.set_xlabel('$f_1$')
     obj_ax.set_ylabel('$f_2$')
@@ -110,7 +110,7 @@ def plot_acq(self, ax = None, **kwargs):
     assert self.input_dim == 2
         
     self.PF = self.get_PF()
-    fargs = [self.GPRs,self.PF,self.A,self.B]    
+    fargs = [self]    
 
     n = kwargs.get('n',30)
     x = np.linspace(*self.bounds[0,:],n)
@@ -159,7 +159,7 @@ def plot_constr(self, ax = None,**kwargs):
         X_i = self.get_data('X')[:10]
         X_m = self.get_data('X')[10:]
 
-        ax.plot(*X_i.T,'.C3',label = 'Initial')
+        ax.plot(*X_i.T,'+C1',label = 'Initial')
         ax.plot(*X_m.T,'.C2',label = 'Selected')
         
     else:

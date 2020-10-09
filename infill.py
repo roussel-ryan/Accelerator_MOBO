@@ -3,6 +3,7 @@ from scipy.stats import multivariate_normal
 from .multi_objective import uhvi
 from .multi_objective import biuhvi
 import time
+import logging
 
 class Infill:
     def __init__(self,name):
@@ -10,21 +11,18 @@ class Infill:
 
 
 class Restricted_UHVI(Infill):
-    def __init__(self, **kwargs):
-
+    def __init__(self, cov = 0.25, **kwargs):
+        self.cov = cov
         self.uhvi = UHVI(**kwargs)
         print(self.uhvi.beta)
         
-    def __call__(self, X, GPRs, PF, A, B):
+    def __call__(self, X, model):
         #get last point
-    
+        GPRs = model.GPRs
         x0 = GPRs[0].data[0][-1]
-        #print(x0)
-        #print(np.linalg.norm(X - x0))        
-
-        alpha0 = self.uhvi(X, GPRs, PF, A, B)
+        alpha0 = self.uhvi(X, model)
         
-        return alpha0 * multivariate_normal.pdf(X, mean = x0, cov = 0.25)
+        return alpha0 * multivariate_normal.pdf(X, mean = x0, cov = self.cov)
         #return alpha0
         #if np.linalg.norm(X - x0) < 1.5:
             #print(self.uhvi(X, GPRs, PF, A, B))
@@ -55,7 +53,12 @@ class UHVI(Infill):
             self.use_schedule = False
             self.beta = beta
 
-    def __call__(self, X, GPRs, PF, A, B):
+    def __call__(self, X, model):
+        GPRs = model.GPRs
+        PF = model.get_PF()
+        A = model.A
+        B = model.B
+        
         start = time.time()
         if self.approx:
             res = uhvi.get_approx_uhvi(X, GPRs, PF, A, B, self.get_beta())

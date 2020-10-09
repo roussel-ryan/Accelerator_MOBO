@@ -205,7 +205,7 @@ class MultiObjectiveBayesianOptimizer:
         '''
         
         #do optimization step to maximize obj (minimize neg_obj)
-        args = [self.GPRs,self.PF,self.A,self.B]
+        args = [self]
         def _neg_obj(x, *args):
             return -1.0 * self.obj(x, *args) 
 

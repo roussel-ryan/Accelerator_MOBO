@@ -1,6 +1,6 @@
 import numpy as np
 import pygmo as pg
-
+import logging
 import time
 
 def get_uhvi(X, GPRs, PF, A, B, beta = 0.01):
@@ -49,10 +49,12 @@ def get_uhvi(X, GPRs, PF, A, B, beta = 0.01):
         for j in range(n_obj):
             mu, std = GPRs[j].predict_f(np.atleast_2d(X[i]))
             uhvi_pt[j] = (mu - np.sqrt(beta * std)).numpy()
-                    
+
+        #logging.info(f'uhvi_pt {uhvi_pt}')
         #if the point is smaller than any value of A project onto A axis
         uhvi_pt = np.where(uhvi_pt > A, uhvi_pt, A)
-
+        #logging.info(f'truncated uhvi_pt {uhvi_pt}')
+        
         #check if point is dominated or if it is outside of ref point
         if is_dominated(uhvi_pt, PF) or np.any(uhvi_pt > B):
             uhvi[i] = 0
