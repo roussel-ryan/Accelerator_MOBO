@@ -66,6 +66,7 @@ def main():
     #create the optimizer object (in this case a simple grid search)
     acq_opt = grid_search.GridSearch(20)
     acq = infill.UHVI(beta = 0.01)
+    print(acq.settings)
     
     #create the mutiobjective optimizer - default infill = UHVI
     mobo_opt = mobo.MultiObjectiveBayesianOptimizer(bounds, GPRs,
