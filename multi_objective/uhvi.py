@@ -3,6 +3,60 @@ import pygmo as pg
 import logging
 import time
 
+def get_predicted_uhvi_point(X, GPRs, beta):
+    pt = np.empty(len(GPRs))
+    for i in len(GPRs):
+        mu, var = GPRs[i].predict_y(np.atleast_2d(X))
+        pt[i] = (mu - np.sqrt(beta * var)).numpy()
+
+    return pt
+
+def get_HVI(F, PF, A, B, use_bi = False, use_approx = False):
+    #if use_bi == True the negative HV is calculated otherwise it is zero
+    if np.any(F < A) or np.any(F > B):
+        return np.Nan
+
+    else:
+        if is_dominated(F ,PF):
+            if use_bi:
+                F = -F
+                PF = -PF
+                A = -A
+                B = -B
+                bi_factor = -1
+            else:
+                return 0
+
+        else:
+            bi_factor = 1
+
+        #calculate HV
+        if use_approx:
+            proj_pf = project(F, PF)
+
+            #get rid of any projected points that are not on the projected pf
+            ndf, _, _, _ = pg.fast_non_dominated_sorting(proj_pf)
+            proj_pf = proj_pf[ndf[0]]
+
+            fpras = pg.bf_fpras(eps=0.1, delta=0.1)
+            
+            hv = pg.hypervolume(proj_pf)
+            ex_hypervolume = np.prod(ref - x) - hv.compute(B, hv_algo=fpras)
+            
+        else:
+            points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
+        
+            hv = pg.hypervolume(points)
+
+            #calculate the exclusive contribution to the hypervolume from our point
+            ex_hypervolume = hv.exclusive(len(points)-1, B)
+
+        return bi_factor * ex_hypervolume
+
+            
+            
+        
+
 def get_uhvi(X, GPRs, PF, A, B, beta = 0.01):
     '''computes the UCB Hypervolume improvement
 

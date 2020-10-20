@@ -37,7 +37,7 @@ class UHVI(Infill):
     def __init__(self, name = 'UHVI', **kwargs):
         #add default values
         d = {'beta':2.0, 'use_approx':False, 'use_schedule': False,
-             'D':0.0, 'delta': 1.0}
+             'D':0.0, 'delta': 1.0, 'use_bidirectional': False}
 
         super().__init__(name, **kwargs)
         self.add_defaults(d)
@@ -48,11 +48,11 @@ class UHVI(Infill):
         PF = model.get_PF()
         A = model.A
         B = model.B
-        
-        if self.settings.get('use_approx',False):
-            res = uhvi.get_approx_uhvi(X, GPRs, PF, A, B, self.get_beta())
-        else:
-            res = uhvi.get_uhvi(X, GPRs, PF, A, B, self.get_beta())
+
+        F = uhvi.get_predicted_uhvi_point(X, GPRs, self.get_beta())
+        res = uhvi.get_HVI(F, PF, A, B,
+                           use_bi = self.settings['use_bidirectional'],
+                           use_approx = self.settings['use_approx'])
         
         return res
 
@@ -84,3 +84,6 @@ class SUHVI(UHVI):
         
         return alpha0 * multivariate_normal.pdf(X, mean = x0, cov = self.settings['cov'])
        
+class Restricted_UHVI(Infill):
+    def __init__(self):
+        pass
