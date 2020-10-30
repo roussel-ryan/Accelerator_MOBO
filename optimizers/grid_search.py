@@ -18,7 +18,7 @@ class GridSearch(base.BlackBoxOptimizer):
         self.n_pts = n_pts
         pass
 
-    def minimize(self, bounds, func, args = [], x0 = None):
+    def minimize(self, bounds, func, model, args = [], x0 = None):
         #create a meshgrid inside bounds
         x = [np.linspace(*ele,self.n_pts) for ele in bounds]
         xx = np.meshgrid(*x)
@@ -28,7 +28,7 @@ class GridSearch(base.BlackBoxOptimizer):
         #eval the function at each pt
         val = []
         for pt in pts:
-            val += [func(pt,*args)]
+            val += [func(pt,model,*args)]
         val = np.array(val)
 
         return base.Result(pts[np.argmin(val)],np.min(val))

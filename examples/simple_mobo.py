@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-plt.style.use('PRAB_style.mplstyle')
 
 #suppress output messages below "ERROR" from tensorflow
 #and prevent the use of any system GPU's
@@ -64,21 +63,24 @@ def main():
                                    kernels[i], noise_variance = 0.0001)]
     
     #create the optimizer object (in this case a simple grid search)
-    acq_opt = grid_search.GridSearch(20)
+    opt = grid_search.GridSearch(20)
     acq = infill.UHVI(beta = 0.01)
     print(acq.settings)
     
     #create the mutiobjective optimizer - default infill = UHVI
     mobo_opt = mobo.MultiObjectiveBayesianOptimizer(bounds, GPRs,
                                                     B, A = A,
-                                                    infill = acq)
+                                                    optimizer = opt,
+                                                    acq = acq)
 
-    n_iterations = 1
+    n_iterations = 25
     for i in range(n_iterations):
         #find next point for observation
-        result = mobo_opt.get_next_point(acq_opt.minimize)
+        result = mobo_opt.get_next_point()
         X_new = np.atleast_2d(result.x)
         Y_new = f(X_new)
+
+        print(mobo_opt.data)
         
         #add observations to mobo GPRs
         mobo_opt.add_observations(X_new,Y_new)
