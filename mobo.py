@@ -8,17 +8,18 @@ import pickle
 import pygmo as pg
 import tensorflow as tf
 
-from .multi_objective import EHVI
 from .multi_objective import pareto
-from .multi_objective import utilities as utils
+from .multi_objective import td_pareto
+from . import utilities as utils
 from .multi_objective import plotting
 
+from . import bo
 from . import infill
-from . import optimizers
+from .optimizers import evolutionary
 from . import trackers
 
 
-class MultiObjectiveBayesianOptimizer:
+class MultiObjectiveBayesianOptimizer(bo.BayesianOptimizer):
     """Multiobjective bayesian optimizer
 
     This class impliments a m-D multi-objective Bayesian optimizer
@@ -65,7 +66,7 @@ class MultiObjectiveBayesianOptimizer:
 
     """
     
-    def __init__(self,bounds,GPRs,B,**kwargs):
+    def __init__(self, bounds, GPRs, B, **kwargs):
         """ Initialization
         
         Parameters:
@@ -96,47 +97,33 @@ class MultiObjectiveBayesianOptimizer:
 
         """
 
-        self.bounds       = bounds
         self.GPRs         = GPRs
         self.B            = B
 
-        self.input_dim    = len(self.bounds)
-        self.obj_dim      = len(self.GPRs)
-        
-        self.A            = kwargs.get('A',np.zeros(self.obj_dim))
-        self.constraints  = kwargs.get('constraints',[])
-        self.constr_dim   = len(self.constraints)
-        self.verbose      = kwargs.get('verbose',False)
+        acq       = kwargs.get('acq', infill.UHVI(1.0))
+        opt       = kwargs.get('optimizer', evolutionary.SwarmOpt())
 
-        self._use_constraints  = 1 if self.constr_dim > 0 else 0
+        super().__init__(bounds, opt, acq)
+
+        self.A            = kwargs.get('A',np.zeros(self.obj_dim))
+        #self.constraints  = kwargs.get('constraints',[])
+        #self.constr_dim   = len(self.constraints)
+        
+        #self._use_constraints  = 1 if self.constr_dim > 0 else 0
 
         self.logger            = logging.getLogger(__name__)
 
+        self._collect_gp_data()
         
-        #set infill function (defualt UHVI w/ beta = 1.0)
-        self.infill                 = kwargs.get('infill',
-                                                 infill.UHVI(1.0))
+    def _collect_gp_data(self):
+        d = self._extract_data_from_GPRs()
+        self._add_to_dataframe(*d)
         
-        #add constraints if necessary
-        if self._use_constraints:
-            self.logger.info('Using constraint function')
-            self.obj = self.constrained_infill
-        else:
-            self.obj = self.infill
-
-            
-        #create a pandas dataframe to store info about observations
-        self.update_model_data()
-        self.logger.info(self.data)
-        self.PF = self.get_PF()
-
-        self.t = 0
-        self.history = []
-
-    def update_model_data(self):
-        self.data = utils.create_gp_dataframe(self)
         
-    def add_observations(self, X, Y, C = None):
+    def get_obj_dim(self):
+        return len(self.GPRs)
+
+    def _add_to_GP(self, X, Y, C = None):
         '''add observed data to gaussian process regressors
 
         Parameters
@@ -155,10 +142,6 @@ class MultiObjectiveBayesianOptimizer:
         None
 
         '''
-        self.logger.debug(f'adding observation(s) X:{X}, Y:{Y}, C:{C}')
-
-        #reshape Y from (n, output_dim) -> (output_dim, n, 1) to properly stack
-        #do the same for C
         npts = Y.shape[0]
         Y = Y.reshape(self.obj_dim, npts, 1)
     
@@ -169,18 +152,15 @@ class MultiObjectiveBayesianOptimizer:
             gpr.data = (tf.concat((gpr.data[0],X),axis=0),
                         tf.concat((gpr.data[1],y_data),axis=0))
 
-        if self._use_constraints:
-            C = C.reshape(self.constr_dim, npts, 1)
+        #if self._use_constraints:
+        #    C = C.reshape(self.constr_dim, npts, 1)
     
-            for j in range(self.constr_dim):
-                self.constraints[j].add_observations(X,C[j])
-
-        self.update_model_data()
-        self.logger.info(f'\n{self.data}')
+        #    for j in range(self.constr_dim):
+        #        self.constraints[j].add_observations(X,C[j])
 
         self.PF = self.get_PF()
         
-    def get_next_point(self, optimizer_func, **kwargs):
+    def _get_optimization_stats(self):
         '''get the point that optimizes TEHVI acq function
 
         Parameters:
@@ -205,60 +185,31 @@ class MultiObjectiveBayesianOptimizer:
         '''
         
         #do optimization step to maximize obj (minimize neg_obj)
-        args = [self]
-        def _neg_obj(x, *args):
-            return -1.0 * self.obj(x, *args) 
-
-        start = time.time()
-        self.logger.info('Starting acquisition function optimization')
-        #self.logger.info(f'UHVI beta {self.infill.get_beta()}')
-
-        res = optimizer_func(self.bounds, _neg_obj, args)
-        exec_time = time.time() - start
-        self.logger.info(f'Done with optimization in {exec_time} s')
-        #self.logger.info(f'Avg UHVI calc time {self.infill.get_avg_time()} s')
-        #self.infill.reset_timer()
-
+     
         #measure distance travelled in input space
         x0 = self.GPRs[0].data[0][-1]
-        dist = np.linalg.norm(res.x - x0)
+        #dist = np.linalg.norm(res.x - x0)
 
         
-        stats = pd.DataFrame({'exec_time':exec_time,
-                              'n_obs':self.n_observations,
-                              'n_iterations' : self.t,
-                              'n_valid' : len(self.get_data('X',valid=True)),
-                              'n_pf':len(self.PF),
-                              'dist':dist,
-                              'hypervolume':self.get_hypervolume(),
-                              'predicted_ideal_point':[res.x],
-                              'predicted_hypervolume_improvment':np.abs(res.f),
-                              'actual_hypervolume_improvement':np.nan,
-                              'log_marginal_likelihood':[self.get_log_marginal_likelihood()]},
-                             index = [self.t])
+        #stats = {'n_pf':len(self.PF),
+        #         'hypervolume':self.get_hypervolume(),
+        #         'log_marginal_likelihood':[self.get_log_marginal_likelihood()]}
+        stats = {}
+        
+        return stats
 
-        if isinstance(self.infill,infill.UHVI):
-            stats['beta'] = self.infill.get_beta()
+    def _extract_data_from_GPRs(self):
+        X = self.GPRs[0].data[0].numpy()
+
+        Y = []
+        for i in range(len(self.GPRs)):
+            Y += [self.GPRs[i].data[1].numpy()]
+
+        Y = np.hstack(Y)
+        return [X,Y]
             
-        if isinstance(self.history,pd.DataFrame):
-            a = stats['hypervolume'] - self.history.at[self.t-1,'hypervolume'] 
-            self.history.at[self.t-1,'actual_hypervolume_improvement'] = a
-            self.history = pd.concat([self.history,stats])
-        else:
-            self.history = stats
-
-        self.t += 1
-
-        return res
-
-    def save(self, fname):
-        pickle.dump(self,open(fname,'wb'))
-    
-    def get_data(self, name = 'all', valid = None, convert = True):
-        return utils.get_data(self, name, valid, convert)
-    
     def get_PF(self):
-        F = self.get_data('Y', valid = True)
+        F = self.get_data('Y')
         return pareto.get_PF(F, self.B, tol = 1e-5)
         
     def get_hypervolume(self):
@@ -269,15 +220,72 @@ class MultiObjectiveBayesianOptimizer:
         res = np.array([ele.log_marginal_likelihood().numpy() for ele in self.GPRs])
         return res
 
-    def plot_acq(self,ax = None, **kwargs):
-        return plotting.plot_acq(self,ax, **kwargs)
 
-    def plot_constr(self,ax = None,**kwargs):
-        return plotting.plot_constr(self,ax,**kwargs)
+class TDMultiObjectiveBayesianOptimizer(MultiObjectiveBayesianOptimizer,
+                                        bo.TDOptimizer):
+    ''' 
+    time dependant multi-objective optimizer
 
-    def constrained_infill(self, x, *args):
-        cval = np.array([ele.predict(
-            x.reshape(-1,self.input_dim)) for ele in self.constraints])
-        constr_val = np.prod(cval)
-        self.constraint_vals = cval
-        return self.infill(x,*args) * constr_val
+    '''
+    def __init__(self, bounds, GPRs, B, **kwargs):
+        default_acq = infill.TDACQ(infill.NUHVI(gamma = 0.01))
+        acq = kwargs.get('acq',default_acq)
+        try:
+            del kwargs['acq']
+        except KeyError:
+            pass
+            
+        MultiObjectiveBayesianOptimizer.__init__(self, bounds, GPRs, B,
+                                                 acq = acq, **kwargs)
+        bo.TDOptimizer.__init__(self)
+
+
+    def get_data(self, name = 'all', **kwargs):
+        #modifies get_data to only include measurements performed before "time"
+        time = kwargs.get('time',self.time)
+        try:
+            del kwargs['time']
+        except KeyError:
+            pass
+            
+        t = super().get_data('t',**kwargs)
+        ind = np.argwhere(t < time).flatten()[::2]
+        
+        data = super().get_data(name, **kwargs)
+        return data[ind]
+        
+    def get_PCB_PF(self, **kwargs):
+        return td_pareto.get_PCB_PF(self, **kwargs)
+
+    
+    def get_PCB_hv(self, **kwargs):
+        PF = self.get_PCB_PF(**kwargs)
+        if np.any(PF):
+            hv = pg.hypervolume(PF)
+            return hv.compute(self.B)
+        else:
+            return 0.0
+
+    
+    def _collect_gp_data(self):
+        d = self._extract_data_from_GPRs()
+        X = d[0]
+        Y = d[1]
+        self._add_to_dataframe(X[:,:-1], Y,
+                               Z = {'t':X[:,-1].reshape(-1,1)})
+
+    def _add_to_GP(self, X, Y, Z):
+        X = np.hstack([X,Z['t']])
+        for i in range(self.obj_dim):
+            gpr = self.GPRs[i]
+            self.GPRs[i].data = (tf.concat((gpr.data[0],X),axis=0),
+                             tf.concat((gpr.data[1],Y[:,i].reshape(-1,1)),axis=0))
+
+    def train(self, iters = 5000):
+        for gpr in self.GPRs:
+            self._train_hyp(gpr, iters)
+    
+    def print_model(self):
+        for gpr in self.GPRs:
+            self._print_model(gpr)
+

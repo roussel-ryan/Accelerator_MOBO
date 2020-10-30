@@ -25,7 +25,7 @@ class BlackBoxOptimizer:
         pass
 
     def minimize(self, bounds, func, args = [], x0 = None):
-        pass
+        raise NotImplementedError
 
 
 

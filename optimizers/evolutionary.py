@@ -12,10 +12,13 @@ class OptProblem:
         self.bounds = bounds
         
         self.obj_func = obj_func
+        self.logger = logging.getLogger(__name__)
         
     def fitness(self,x):
-        return self.obj_func(x,*self.args)
-
+        fit = [self.obj_func(x,*self.args)]
+        self.logger.debug(f'fitness : {fit}')
+        return fit
+        
     def get_bounds(self):
         bounds = tuple(map(tuple,self.bounds.astype(np.float64).T))
         return bounds
@@ -56,18 +59,19 @@ class SwarmOpt(base.BlackBoxOptimizer):
     def __init__(self,**kwargs):
         #swarm optimization hyperparameters
         self.generations = kwargs.get('generations',20)
-        self.pop_size    = kwargs.get('population', 50)
+        self.pop_size    = kwargs.get('population', 64)
         self.islands   = kwargs.get('islands',1)
 
         self.logger            = logging.getLogger(__name__)
 
         
-    def minimize(self, bounds, func, args = [], x0 = None):
-        p = OptProblem(bounds, func, args)
+    def minimize(self, bounds, func, model, args = []):
+        p = OptProblem(bounds, func, [model] + args)
         problem = pg.problem(p)
 
         algo = pg.algorithm(pg.pso_gen(gen = self.generations))
         #algo.set_verbosity(5)
+        self.logger.debug(problem)
         pop = pg.population(problem,size = self.pop_size)
 
         #isl = pg.island(algo = algo,
@@ -82,7 +86,6 @@ class SwarmOpt(base.BlackBoxOptimizer):
         #pop = isl.get_population()
         #create result object
         res = base.Result(pop.get_x()[pop.best_idx()], pop.get_f()[pop.best_idx()])
-        
         return res
 
 class ParallelSwarmOpt(base.BlackBoxOptimizer):

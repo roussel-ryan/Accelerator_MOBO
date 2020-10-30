@@ -5,16 +5,17 @@ import time
 
 def get_predicted_uhvi_point(X, GPRs, beta):
     pt = np.empty(len(GPRs))
-    for i in len(GPRs):
+    for i in range(len(GPRs)):
         mu, var = GPRs[i].predict_y(np.atleast_2d(X))
         pt[i] = (mu - np.sqrt(beta * var)).numpy()
 
+    pt = np.atleast_2d(pt)
     return pt
 
 def get_HVI(F, PF, A, B, use_bi = False, use_approx = False):
     #if use_bi == True the negative HV is calculated otherwise it is zero
     if np.any(F < A) or np.any(F > B):
-        return np.Nan
+        return 0
 
     else:
         if is_dominated(F ,PF):
@@ -44,7 +45,7 @@ def get_HVI(F, PF, A, B, use_bi = False, use_approx = False):
             ex_hypervolume = np.prod(ref - x) - hv.compute(B, hv_algo=fpras)
             
         else:
-            points = np.vstack((PF,np.atleast_2d(uhvi_pt)))
+            points = np.vstack((PF,np.atleast_2d(F)))
         
             hv = pg.hypervolume(points)
 

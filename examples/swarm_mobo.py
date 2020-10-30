@@ -76,7 +76,7 @@ def main():
     n_iterations = 100
     for i in range(n_iterations):
         #find next point for observation
-        result = mobo_opt.get_next_point(swarm_opt.minimize)
+        result = mobo_opt.get_next_point()
         X_new = np.atleast_2d(result.x)
         Y_new = f(X_new)
         
