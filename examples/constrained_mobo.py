@@ -14,12 +14,12 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 
 import gpflow
 
-from GaussianProcessTools import mobo
-from GaussianProcessTools import constraints
-from GaussianProcessTools.optimizers import grid_search
-from GaussianProcessTools import infill
-from GaussianProcessTools import plotting
-from GaussianProcessTools.optimizers import evolutionary 
+from Accelerator_MOBO import mobo
+from Accelerator_MOBO import constraints
+from Accelerator_MOBO.optimizers import grid_search
+from Accelerator_MOBO import infill
+from Accelerator_MOBO import plotting
+from Accelerator_MOBO.optimizers import evolutionary 
 
 
 def f(x):
@@ -34,7 +34,7 @@ def c(x):
 
 
 def main():
-    '''simple example of MOBO with GaussianProcessTools
+    '''simple example of MOBO with Accelerator_MOBO
     
     In this example we wish to find the pareto front of a simple
     2 objective function (see defined above). The functions represent
