@@ -2,8 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-plt.style.use('PRAB_style.mplstyle')
-
 #suppress output messages below "ERROR" from tensorflow
 #and prevent the use of any system GPU's
 import os
