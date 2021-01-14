@@ -11,10 +11,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 
 import gpflow
 
-from GaussianProcessTools import mobo
-from GaussianProcessTools.optimizers import grid_search
-from GaussianProcessTools import infill
-from GaussianProcessTools.multi_objective import plotting
+from Accelerator_MOBO import mobo
+from Accelerator_MOBO.optimizers import grid_search
+from Accelerator_MOBO import infill
+from Accelerator_MOBO.multi_objective import plotting
 
 def f(x):
     f1 = np.linalg.norm(x - np.array((1,1)))
@@ -22,7 +22,7 @@ def f(x):
     return np.array((f1,f2)).reshape(-1,2)
 
 def main():
-    '''simple example of MOBO with GaussianProcessTools
+    '''simple example of MOBO with Accelerator_MOBO
     
     In this example we wish to find the pareto front of a simple
     2 objective function (see defined above). The functions represent

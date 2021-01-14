@@ -10,10 +10,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = '3'
 
 import gpflow
 
-from GaussianProcessTools import sobo
-from GaussianProcessTools.optimizers import grid_search
-from GaussianProcessTools import infill
-from GaussianProcessTools.multi_objective import plotting
+from Accelerator_MOBO import sobo
+from Accelerator_MOBO.optimizers import grid_search
+from Accelerator_MOBO import infill
+from Accelerator_MOBO.multi_objective import plotting
 
 def f(x):
     f1 = np.linalg.norm(x - np.array((1,1)))

@@ -29,11 +29,11 @@ class AdvancedRBF(gpflow.kernels.Kernel):
                      corresponding to 1 / sqrt(lengthscale)
     
     "anisotropic" - L = np.diag(S)
-                     L = tf.tensor, shape (dim,),
+                     S = tf.tensor, shape (dim,),
                      corresponding to 1 / sqrt(lengthscale_i) i E [0,dim]
 
     "correlated"  - L = upper_tri(S)
-                     L = tf.tensor, shape ((dim**2)/2 - D,),
+                     S = tf.tensor, shape ((dim**2)/2 - D,),
                      corrsponds to \Sigma = L * L.T = 1 / covarience matrix
                      
     
