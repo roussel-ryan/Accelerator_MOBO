@@ -110,9 +110,9 @@ class BayesianOptimizer:
     def _clear_dataframe(self):
         self.data = None
 
-    def _train_hyp(self, gpr, max_iter = 5000, learning_rate = 0.01):
+    def _train_hyp(self, gpr, max_iter = 5000, lr = 0.01):
         self.logger.info('training hyperparameters')
-        opt = tf.optimizers.Adam(learning_rate = learning_rate)
+        opt = tf.optimizers.Adam(learning_rate = lr)
 
         old_lml = -1e9
         lml_deltas = []

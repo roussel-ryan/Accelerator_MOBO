@@ -57,7 +57,19 @@ class TDACQ(Infill):
         T = np.ones(len(X)).reshape(-1,1) * model.time
         X = np.hstack((X,T))
         return self.base_acq.acq_func(X, model)
-                
+
+class UCB_Weighted(Infill):
+    def __init__(self, name, **kwargs):
+        d = {'beta' : 2.0, 'maximize' : False}
+        super().__init__(name, **kwargs)
+        self.add_defaults(d)
+        self.acq_func = self.get_wUCB
+
+    def get_wUCB(self, X, model):
+        GPRs = model.GPRs
+
+        
+    
 class UCB(Infill):
     def __init__(self, name = 'UCB', **kwargs):
         d = {'beta':2.0, 'maximize' : True}

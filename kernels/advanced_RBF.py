@@ -19,7 +19,7 @@ class AdvancedRBF(gpflow.kernels.Kernel):
 
     k(x,x') = exp(- 0.5 * (x - x').T * \Sigma * (x - x'))
 
-    with the decomposition \Sigma = L * L.T, where L is an upper-triangular matrix 
+    with the Cholesky decomposition \Sigma = L * L.T, where L is an upper-triangular matrix 
     to make optimization and calculation of the Maharanobis distance easier
 
     k(x,x') = exp(- 0.5 * (x - x').T * L * L.T * (x - x')) 
@@ -33,9 +33,13 @@ class AdvancedRBF(gpflow.kernels.Kernel):
                      corresponding to 1 / sqrt(lengthscale_i) i E [0,dim]
 
     "correlated"  - L = upper_tri(S)
-                     S = tf.tensor, shape ((dim**2)/2 - D,),
+                     S = tf.tensor, shape (dim**2 + dim)/2,
                      corrsponds to \Sigma = L * L.T = 1 / covarience matrix
-                     
+
+    "physics"     - L * L.T = S
+                     S = tf.tensor, shape (dim, dim)
+                     S is the precision matrix from physics, hessian calculation
+                     (Note: cannot be retrained using MLE estimate!!!)
     
 
     Attributes
@@ -51,67 +55,89 @@ class AdvancedRBF(gpflow.kernels.Kernel):
 
     """
 
-    def __init__(self,active_dims = None,
-                 variance = 1.0, S = np.empty(1),
-                 mode = 'correlated',name = 'advancedRBF'):
+    def __init__(self, active_dims = None,
+                 variance = 1.0, S = np.empty(1), input_dim = 1,
+                 mode = 'correlated', name = 'advancedRBF'):
 
         
         super(AdvancedRBF, self).__init__(active_dims=None, name = name)
 
-        self.S           = gpflow.Parameter(S)
-        self.variance    = gpflow.Parameter(variance)
-
+        #NOTE: GPFLOW USES ALL TF.FLOAT64 !!!!!!!
         self._dtype      = tf.float64
         self.mode        = mode
 
+        self.D           = input_dim
+        
+        self.S           = gpflow.Parameter(S, dtype = self._dtype)
+        self.variance    = gpflow.Parameter(variance, dtype = self._dtype)
 
+        
+        self.L           = self.get_decomp()  
+        
     def get_precision_matrix(self):
         return tf.linalg.matmul(self.L,tf.transpose(self.L))
 
-    
     def get_covariance_matrix(self):
         return tf.linalg.inv(self.get_precision_matrix())
 
-    
-    def K(self, X, X2 = None):
-        #get input dimention from input variable
-        self.D = tf.shape(X)[1].numpy()
+    def get_decomp(self):
         S = self.S
-    
+        
         if self.mode == 'correlated':
             #if using the correlated matrix the input shape should be (D**2 + D)/2
-            assert tf.shape(S)[0].numpy() == int(self.D**2 + self.D)/2
+            assert tf.shape(S)[0] == int((self.D**2 + self.D)/2)
 
-            self.L = self._construct_upper_triangle(S)
+            L = self._construct_upper_triangle(S)
             
             
         elif self.mode == 'anisotropic':
             #if using anisotropic, L is elements along the diagonal
-            assert tf.shape(S)[0].numpy() == self.D
+            assert tf.shape(S)[0] == self.D
 
             #need to transform into upper triangle (just diagonal matrix)
-            self.L = tf.linalg.diag(S)
+            L = tf.linalg.diag(S)
             
         elif self.mode == 'isotropic':
-            assert tf.shape(L)[0].numpy() == 1
-
-            self.L = tf.linalg.diag(tf.ones(self.D) * S)
-
+            assert tf.shape(S)[0] == 1
+            
+            L = tf.linalg.diag(tf.ones(self.D, dtype = self._dtype) * S)
+            
+        elif self.mode == 'physics':
+            assert tf.shape(S)[0] == tf.shape(S)[1]
+            assert tf.shape(S)[0] == self.D
+            
+            L = tf.linalg.cholesky(S)
+            
         else:
             raise RuntimeError(f'RBF mode {self.mode} not found!')
 
+        return L
+        
+    def K(self, X, X2 = None):
+        #set dtypes
+        X = tf.cast(X, self._dtype)
+        try:
+            X2 = tf.cast(X2, self._dtype) 
+        except ValueError:
+            #X2 can be none
+            pass
+
+        #recalculate cho decomp, necessary if trying to train hyperparameters
+        self.L = self.get_decomp()
         
         if X2 is None:
             X2 = X
-            dists = self._EfficientMaharanobis(X,X2,self.upper_triangle)
+            dists = self._EfficientMaharanobis(X, X2, self.L)
             
             #to make sure that no nans occur,
             #if we try to get K(X,X) set the distance to zero
-            dists = tf.linalg.set_diag(dists,tf.zeros(tf.shape(X)[0],dtype=self._dtype))
+            dists = tf.linalg.set_diag(dists,
+                                       tf.zeros(tf.shape(X)[0],
+                                                dtype=self._dtype))
 
         else:    
-            dists = self._EfficientMaharanobis(X,X2,self.upper_triangle)
-
+            dists = self._EfficientMaharanobis(X, X2, self.L)
+            
         return self.variance * tf.exp(-0.5 * dists ** 2)
 
     
@@ -129,14 +155,14 @@ class AdvancedRBF(gpflow.kernels.Kernel):
         idx[tiu_idx] = np.arange(np.shape(tiu_idx)[1])
 
         upper_triangle = tf.where(mask,tf.gather(S,idx),tf.zeros((D,D),dtype=self._dtype))
-        return L
+        return upper_triangle
 
     
     def K_diag(self, X):
         return tf.fill(tf.shape(X)[:-1],tf.squeeze(self.variance))
 
     
-    def _EfficientMaharanobis(self,A,B,S_half):
+    def _EfficientMaharanobis(self, A, B, S_half):
         '''
         https://fairyonice.github.io/mahalanobis-tf2.html
         A : tensor, N sample1 by N feat
@@ -150,6 +176,7 @@ class AdvancedRBF(gpflow.kernels.Kernel):
     
         '''
         #S_half = tf.linalg.cholesky(invS)
+        
         A_star = tf.matmul(A,S_half)
         B_star = tf.matmul(B,S_half)
 

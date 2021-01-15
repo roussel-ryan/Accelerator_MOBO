@@ -97,8 +97,8 @@ class SingleObjectiveBayesianOptimizer(bo.BayesianOptimizer):
         self.GPR.data = (tf.concat((gpr.data[0],X),axis=0),
                     tf.concat((gpr.data[1],Y),axis=0))
 
-    def train(self, iters = 5000):
-        self._train_hyp(self.GPR, iters)
+    def train(self, **kwargs):
+        self._train_hyp(self.GPR, **kwargs)
 
     def print_model(self):
         self._print_model(self.GPR)
