@@ -30,22 +30,24 @@ def main():
     X0 = tf.cast(X0,tf.float64)
     Y0 = tf.cast(Y0,tf.float64)
     
-    #create kernels - each kernel results in an effective
-    #isotropic matrix with a lengthscale of 1
+    #create kernels
     #by default the kernel coefficient is 1
-    #isotropic
+    #isotropic - value is inverse sqrt(lengthscale)
     S = tf.ones(1, dtype = tf.float64)
     k1 = advanced_RBF.AdvancedRBF(S = S, mode = 'isotropic', input_dim = 2)
 
     #anisotropic
+    #elements are inverse sqrt(lengthscales)
     S = tf.constant((1.0,0.5))
     k2 = advanced_RBF.AdvancedRBF(S = S, mode = 'anisotropic', input_dim = 2)
 
-    #correlated
+    #correlated - allows retraining of matrix elements - elements are upper triangle elements of L
+    #precision matrix = L * L^T
     S = tf.constant((1.0, 0.5, 1.0))
     k3 = advanced_RBF.AdvancedRBF(S = S, mode = 'correlated', input_dim = 2)
 
-    #physics informed
+    #physics informed - does NOT allow retraining due to symmetry/invertability requirements
+    #S is precision matrix
     S = tf.constant(((1.0,0.5),(0.5,1.0)))
     k4 = advanced_RBF.AdvancedRBF(S = S, mode = 'physics', input_dim = 2)
 
