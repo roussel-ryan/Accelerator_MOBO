@@ -68,6 +68,8 @@ def main():
         #add observations to mobo GPRs
         sobo_opt.add_observations(X_new,Y_new)
 
+
+    
     
 if __name__=='__main__':
     main()

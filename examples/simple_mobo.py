@@ -73,7 +73,7 @@ def main():
                                                     optimizer = opt,
                                                     acq = acq)
 
-    n_iterations = 25
+    n_iterations = 2
     for i in range(n_iterations):
         #find next point for observation
         result = mobo_opt.get_next_point()
@@ -95,12 +95,12 @@ def main():
     fig.colorbar(cax)
 
     #plot the hypervolume as a function of iteration #
-    fig2, ax2 = plt.subplots()
-    ax2.plot(mobo_opt.history['hypervolume'])
+    #fig2, ax2 = plt.subplots()
+    #ax2.plot(mobo_opt.history['hypervolume'])
 
     #add a line where the theoretical HV max would be
-    HV_max = np.product(B) - 0.5 * 8
-    fig2.axes[0].axhline(HV_max)
+    #HV_max = np.product(B) - 0.5 * 8
+    #fig2.axes[0].axhline(HV_max)
 
     #fig3, ax3 = plt.subplots()
     plotting.plot_full(mobo_opt, f)

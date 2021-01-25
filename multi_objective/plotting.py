@@ -25,7 +25,7 @@ def plot_full(model, f_ground = None, n = 20):
     fig, axes = plt.subplots(2 + add,2)
     fig.set_size_inches(3.75,4)
     
-    assert model.input_dim == 2
+    assert model.domain_dim == 2
         
     PF = model.get_PF()
     fargs = [model]    
@@ -39,7 +39,7 @@ def plot_full(model, f_ground = None, n = 20):
     g = []
     f_gnd = []
     for pt in pts:
-        g += [model.obj(pt,*fargs)]
+        g += [model.acq(pt.reshape(1,-1), model)]
         if add:
             f_gnd += [f_ground(pt)]
 
@@ -107,7 +107,7 @@ def plot_acq(self, ax = None, **kwargs):
     if ax is None:
         fig, ax = plt.subplots()
 
-    assert self.input_dim == 2
+    assert self.domain_dim == 2
         
     self.PF = self.get_PF()
     fargs = [self]    
